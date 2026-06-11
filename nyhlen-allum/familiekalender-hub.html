@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nyhlen Allum – Hub</title>
+<style>
+  :root{--simen:#378ADD;--linda:#D4537E;--alma:#1D9E75;--vilma:#EF9F27;--bg:#0f0f11;--surface:#1a1a1e;--surface2:#242428;--border:rgba(255,255,255,0.08);--text:#f0f0f2;--text2:#88888f;--text3:#55555c;--accent:#7F77DD;}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:-apple-system,'Helvetica Neue',Arial,sans-serif;}
+  .layout{display:grid;grid-template-rows:68px 56px 1fr;width:100vw;height:100vh;overflow:hidden;}
+
+  /* Topbar */
+  .topbar{display:flex;align-items:center;justify-content:space-between;padding:0 18px;background:var(--surface);border-bottom:0.5px solid var(--border);}
+  .topbar-left{display:flex;flex-direction:column;gap:1px;}
+  .family-name{font-size:12px;font-weight:600;color:var(--accent);letter-spacing:0.5px;}
+  .topbar-date{font-size:16px;font-weight:600;}
+  .topbar-right{display:flex;align-items:center;gap:12px;}
+  .topbar-time{font-size:30px;font-weight:300;letter-spacing:-1px;font-variant-numeric:tabular-nums;}
+  .member-dots{display:flex;gap:6px;}
+  .member-dot-wrap{display:flex;flex-direction:column;align-items:center;gap:2px;}
+  .member-dot{width:9px;height:9px;border-radius:50%;}
+  .member-dot-label{font-size:9px;color:var(--text2);}
+  .sync-dot{width:7px;height:7px;border-radius:50%;background:var(--alma);}
+  .sync-dot.syncing{background:var(--vilma);animation:pulse 1s infinite;}
+  .sync-dot.offline{background:#E24B4A;}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
+  @keyframes micPulse{0%,100%{transform:scale(1);box-shadow:0 0 0 0 rgba(127,119,221,0.4)}50%{transform:scale(1.05);box-shadow:0 0 0 8px rgba(127,119,221,0)}}
+  .mic-active-hub{background:var(--accent)!important;animation:micPulse 1s infinite!important;}
+
+  /* Week strip */
+  .week-strip{display:grid;grid-template-columns:repeat(7,1fr);border-bottom:0.5px solid var(--border);background:var(--surface);}
+  .week-strip-day{display:flex;flex-direction:column;align-items:center;padding:6px 4px;border-right:0.5px solid var(--border);cursor:pointer;}
+  .week-strip-day:last-child{border-right:none;}
+  .week-strip-day.selected{background:var(--surface2);}
+  .wsd-name{font-size:10px;color:var(--text2);text-transform:uppercase;}
+  .wsd-num{font-size:18px;font-weight:600;margin:1px 0;}
+  .wsd-num.today-num{background:var(--accent);color:white;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:14px;}
+  .wsd-dots{display:flex;gap:2px;justify-content:center;min-height:6px;}
+  .wsd-dot{width:5px;height:5px;border-radius:50%;}
+
+  /* Main area: 2 columns */
+  .main-area{display:grid;grid-template-columns:1fr 1fr;overflow:hidden;height:100%;}
+
+  /* Left panel with tabs */
+  .left-panel{display:flex;flex-direction:column;border-right:0.5px solid var(--border);overflow:hidden;}
+  .panel-tabs{display:flex;background:var(--surface);border-bottom:0.5px solid var(--border);}
+  .panel-tab{flex:1;padding:8px 4px;text-align:center;font-size:12px;color:var(--text2);cursor:pointer;border-bottom:2px solid transparent;background:none;border-top:none;border-left:none;border-right:none;}
+  .panel-tab.active{color:var(--accent);border-bottom-color:var(--accent);}
+  .panel-content{flex:1;overflow-y:auto;padding:14px;}
+  .panel-content::-webkit-scrollbar{width:3px;}
+  .panel-content::-webkit-scrollbar-thumb{background:var(--border);}
+
+  /* Mini calendar */
+  .mini-month-title{font-size:13px;font-weight:600;text-transform:capitalize;margin-bottom:8px;}
+  .mini-weekdays{display:grid;grid-template-columns:repeat(7,1fr);margin-bottom:2px;}
+  .mini-wday{font-size:10px;color:var(--text3);text-align:center;padding:2px 0;}
+  .mini-days{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;}
+  .mini-day{aspect-ratio:1;display:flex;align-items:center;justify-content:center;font-size:11px;border-radius:50%;cursor:pointer;color:var(--text2);position:relative;}
+  .mini-day.cur-month{color:var(--text);}
+  .mini-day.today{background:var(--accent);color:white;font-weight:600;}
+  .mini-day.has-event::after{content:'';position:absolute;bottom:1px;left:50%;transform:translateX(-50%);width:3px;height:3px;border-radius:50%;background:var(--accent);}
+  .mini-day.today::after{display:none;}
+  .mini-day.other-month{opacity:0.3;}
+  .month-nav{display:flex;justify-content:space-between;align-items:center;margin-top:8px;}
+  .mnav-btn{background:var(--surface2);border:0.5px solid var(--border);color:var(--text2);padding:3px 10px;border-radius:6px;font-size:15px;cursor:pointer;}
+  .mnav-label{font-size:11px;color:var(--text2);text-transform:capitalize;}
+  .legend-title{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin:14px 0 8px;font-weight:500;}
+  .legend-item{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
+  .legend-bar{width:3px;height:22px;border-radius:2px;flex-shrink:0;}
+  .legend-name{font-size:13px;font-weight:500;}
+  .legend-count{font-size:11px;color:var(--text2);}
+
+  /* Weather panel */
+  .weather-now{display:flex;align-items:center;gap:12px;margin-bottom:12px;}
+  .weather-icon{font-size:40px;}
+  .weather-temp{font-size:36px;font-weight:300;}
+  .weather-desc{font-size:13px;color:var(--text2);}
+  .weather-feels{font-size:11px;color:var(--text2);margin-top:2px;}
+  .weather-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px;}
+  .weather-cell{background:var(--surface2);border-radius:8px;padding:8px 10px;}
+  .weather-cell-label{font-size:10px;color:var(--text2);margin-bottom:2px;}
+  .weather-cell-val{font-size:14px;font-weight:500;}
+  .forecast-row{display:flex;gap:6px;}
+  .fc-day{flex:1;background:var(--surface2);border-radius:8px;padding:6px 4px;text-align:center;}
+  .fc-name{font-size:10px;color:var(--text2);}
+  .fc-icon{font-size:18px;margin:3px 0;}
+  .fc-max{font-size:12px;font-weight:500;}
+  .fc-min{font-size:10px;color:var(--text2);}
+
+  /* Lists panel */
+  .list-tabs-hub{display:flex;gap:6px;margin-bottom:10px;}
+  .list-tab-hub{padding:5px 12px;border-radius:16px;border:0.5px solid var(--border);font-size:12px;cursor:pointer;background:none;color:var(--text2);}
+  .list-tab-hub.active{background:var(--accent);color:white;border-color:var(--accent);}
+  .list-add-row{display:flex;gap:6px;margin-bottom:10px;}
+  .list-input-hub{flex:1;padding:8px 10px;background:var(--surface2);border:0.5px solid var(--border);border-radius:8px;font-size:13px;color:var(--text);font-family:inherit;}
+  .list-input-hub:focus{outline:none;border-color:var(--accent);}
+  .list-add-btn-hub{padding:8px 12px;background:var(--accent);color:white;border:none;border-radius:8px;font-size:16px;cursor:pointer;}
+  .list-item-hub{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:0.5px solid var(--border);}
+  .list-item-hub:last-child{border-bottom:none;}
+  .list-check-hub{width:20px;height:20px;border-radius:50%;border:1.5px solid var(--border);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:11px;}
+  .list-check-hub.done{background:var(--alma);border-color:var(--alma);color:white;}
+  .list-item-text-hub{flex:1;font-size:13px;}
+  .list-item-text-hub.done{text-decoration:line-through;color:var(--text2);}
+  .list-del-btn{color:var(--text2);background:none;border:none;font-size:16px;cursor:pointer;padding:0 4px;}
+  .list-member-badge{font-size:10px;padding:2px 6px;border-radius:8px;color:white;flex-shrink:0;}
+  .list-empty-hub{color:var(--text3);font-size:13px;text-align:center;padding:16px 0;}
+
+  /* Right panel: day events + upcoming */
+  .right-panel{display:flex;flex-direction:column;overflow:hidden;}
+  .day-events-area{padding:12px 14px;overflow-y:auto;flex:1;border-bottom:0.5px solid var(--border);}
+  .day-events-area::-webkit-scrollbar{width:3px;}
+  .day-label{font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;font-weight:500;}
+  .hub-event{display:flex;gap:10px;align-items:flex-start;background:var(--surface2);border-radius:10px;padding:10px 12px;margin-bottom:8px;}
+  .hub-event-bar{width:3px;border-radius:2px;align-self:stretch;min-height:28px;flex-shrink:0;}
+  .hub-event-title{font-size:14px;font-weight:500;margin-bottom:3px;}
+  .hub-event-time{font-size:12px;color:var(--text2);margin-bottom:4px;}
+  .hub-event-tags{display:flex;gap:4px;flex-wrap:wrap;}
+  .hub-tag{font-size:11px;padding:2px 8px;border-radius:8px;color:white;font-weight:500;}
+  .upcoming-section{padding:10px 14px;overflow-y:auto;flex:1;}
+  .upcoming-section::-webkit-scrollbar{width:3px;}
+  .upcoming-header-label{font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;font-weight:500;}
+  .upcoming-date-label{font-size:11px;color:var(--text2);font-weight:600;padding:6px 0 3px;text-transform:capitalize;}
+  .upcoming-item{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:0.5px solid var(--border);}
+  .upcoming-item:last-child{border-bottom:none;}
+  .upcoming-color{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+  .upcoming-info{flex:1;min-width:0;}
+  .upcoming-title{font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .upcoming-time{font-size:11px;color:var(--text2);}
+  .upcoming-members{display:flex;gap:2px;flex-shrink:0;}
+  .upcoming-avatar{width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:8px;color:white;font-weight:600;}
+  .empty{color:var(--text3);font-size:13px;padding:16px;text-align:center;}
+  .last-updated{padding:5px 14px;border-top:0.5px solid var(--border);font-size:10px;color:var(--text3);text-align:center;background:var(--surface);}
+
+  /* Keyboard modal */
+  .kb-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:200;display:none;align-items:flex-end;justify-content:center;}
+  .kb-overlay.open{display:flex;}
+  .kb-modal{background:var(--surface);border-radius:20px 20px 0 0;width:100%;padding:20px 20px 30px;max-height:85vh;overflow-y:auto;}
+  .kb-handle{width:36px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 16px;}
+  .kb-title{font-size:16px;font-weight:600;margin-bottom:14px;}
+  .kb-input{width:100%;padding:10px 12px;background:var(--bg);border:0.5px solid var(--border);border-radius:10px;font-size:16px;color:var(--text);font-family:inherit;margin-bottom:10px;}
+  .kb-input:focus{outline:none;border-color:var(--accent);}
+  .kb-row{display:flex;gap:8px;margin-bottom:10px;}
+  .kb-btn{flex:1;padding:12px;background:var(--accent);color:white;border:none;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer;}
+  .kb-cancel{background:var(--surface2);color:var(--text2);}
+  .kb-member-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;}
+  .kb-member-btn{padding:6px 12px;border-radius:16px;border:1.5px solid;font-size:12px;font-weight:500;cursor:pointer;background:none;}
+</style>
+</head>
+<body>
+<div class="layout">
+
+  <!-- TOPBAR -->
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="family-name">Nyhlen Allum</div>
+      <div class="topbar-date" id="tbDate"></div>
+    </div>
+    <div class="topbar-right">
+      <div class="member-dots">
+        <div class="member-dot-wrap"><div class="member-dot" style="background:var(--simen)"></div><div class="member-dot-label">Simen</div></div>
+        <div class="member-dot-wrap"><div class="member-dot" style="background:var(--linda)"></div><div class="member-dot-label">Linda</div></div>
+        <div class="member-dot-wrap"><div class="member-dot" style="background:var(--alma)"></div><div class="member-dot-label">Alma</div></div>
+        <div class="member-dot-wrap"><div class="member-dot" style="background:var(--vilma)"></div><div class="member-dot-label">Vilma</div></div>
+      </div>
+      <span class="sync-dot syncing" id="syncDot"></span>
+      <button onclick="openHubVoice()" id="hubMicBtn" style="background:var(--surface2);border:0.5px solid var(--border);color:white;border-radius:50%;width:36px;height:36px;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;">🎤</button>
+      <div class="topbar-time" id="tbTime"></div>
+    </div>
+  </div>
+
+  <!-- WEEK STRIP -->
+  <div class="week-strip" id="weekStrip"></div>
+
+  <!-- MAIN -->
+  <div class="main-area">
+    <!-- LEFT -->
+    <div class="left-panel">
+      <div class="panel-tabs">
+        <button class="panel-tab active" onclick="setLeftPanel('cal')">📅 Kalender</button>
+        <button class="panel-tab" onclick="setLeftPanel('weather')">🌤️ Vær</button>
+        <button class="panel-tab" onclick="setLeftPanel('lists')">📋 Lister</button>
+      </div>
+      <div class="panel-content" id="leftContent"></div>
+    </div>
+    <!-- RIGHT -->
+    <div class="right-panel">
+      <div class="day-events-area" id="dayEventsArea"></div>
+      <div class="upcoming-section" id="upcomingList"></div>
+      <div class="last-updated" id="lastUpdated"></div>
+    </div>
+  </div>
+</div>
+
+<!-- List add modal -->
+<div class="kb-overlay" id="kbOverlay" onclick="handleKbOverlay(event)">
+  <div class="kb-modal">
+    <div class="kb-handle"></div>
+    <div class="kb-title" id="kbTitle">Legg til</div>
+    <input class="kb-input" id="kbInput" type="text" placeholder="Skriv her..." />
+    <div class="kb-member-row" id="kbMemberRow"></div>
+    <div class="kb-row">
+      <button class="kb-btn" onclick="confirmKbAdd()">Legg til</button>
+      <button class="kb-btn kb-cancel" onclick="closeKb()">Avbryt</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getDatabase, ref, onValue, push, update, remove } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDHdR4uSVUEPV7fdPwvANc1xYiTX3oV8nQ",
+  authDomain: "nyhlen-allum.firebaseapp.com",
+  databaseURL: "https://nyhlen-allum-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "nyhlen-allum",
+  storageBucket: "nyhlen-allum.firebasestorage.app",
+  messagingSenderId: "558059823130",
+  appId: "1:558059823130:web:15fa1de6567174ed46b1a3"
+};
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+const eventsRef = ref(db,'events');
+const todoRef   = ref(db,'todo');
+const shopRef   = ref(db,'shopping');
+
+const MEMBERS = {Simen:'#378ADD',Linda:'#D4537E',Alma:'#1D9E75',Vilma:'#EF9F27'};
+const DAYS_NO = ['man','tir','ons','tor','fre','lør','søn'];
+const DAYS_FULL = ['mandag','tirsdag','onsdag','torsdag','fredag','lørdag','søndag'];
+const MONTHS_NO = ['januar','februar','mars','april','mai','juni','juli','august','september','oktober','november','desember'];
+
+let events={}, todoItems={}, shopItems={};
+let selectedDate=new Date(), displayMonth=new Date();
+let leftPanel='cal', activeList='todo';
+let weatherData=null;
+let kbMode='todo', kbMember='';
+
+function setSyncStatus(state){document.getElementById('syncDot').className='sync-dot'+(state?' '+state:'');}
+onValue(eventsRef,snap=>{events=snap.val()||{};setSyncStatus('');renderAll();},()=>setSyncStatus('offline'));
+onValue(todoRef,snap=>{todoItems=snap.val()||{};if(leftPanel==='lists')renderLeft();});
+onValue(shopRef,snap=>{shopItems=snap.val()||{};if(leftPanel==='lists')renderLeft();});
+
+// Weather
+async function fetchWeather(){
+  try{const r=await fetch('https://api.open-meteo.com/v1/forecast?latitude=58.4811&longitude=16.3239&current=temperature_2m,weathercode,windspeed_10m,relative_humidity_2m,apparent_temperature&daily=weathercode,temperature_2m_max,temperature_2m_min&timezone=Europe%2FStockholm&forecast_days=5');weatherData=await r.json();if(leftPanel==='weather')renderLeft();}catch(e){}
+}
+fetchWeather(); setInterval(fetchWeather,30*60*1000);
+
+function wmoIcon(c){if(c===0)return'☀️';if(c<=2)return'🌤️';if(c<=3)return'☁️';if(c<=48)return'🌫️';if(c<=57)return'🌦️';if(c<=67)return'🌧️';if(c<=77)return'🌨️';if(c<=82)return'🌧️';if(c<=86)return'🌨️';if(c<=99)return'⛈️';return'🌡️';}
+function wmoDesc(c){if(c===0)return'Klart';if(c<=2)return'Delvis skyet';if(c<=3)return'Overskyet';if(c<=48)return'Tåke';if(c<=57)return'Yr';if(c<=67)return'Regn';if(c<=77)return'Snø';if(c<=82)return'Regnbyger';if(c<=86)return'Snøbyger';if(c<=99)return'Tordenvær';return'Ukjent';}
+
+function fmt(y,m,d){const dt=new Date(y,m,d);return dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0')+'-'+String(dt.getDate()).padStart(2,'0');}
+function todayStr(){const t=new Date();return fmt(t.getFullYear(),t.getMonth(),t.getDate());}
+
+function getEventsOn(dateStr){
+  return Object.entries(events).filter(([id,ev])=>{
+    if(!ev.members)return false;
+    const evDate=new Date(ev.date+'T12:00:00'),checkDate=new Date(dateStr+'T12:00:00');
+    if(ev.endDate&&ev.repeat==='ingen'){const end=new Date(ev.endDate+'T12:00:00');return checkDate>=evDate&&checkDate<=end;}
+    if(ev.repeat==='ingen')return ev.date===dateStr;
+    if(checkDate<evDate)return false;
+    if(ev.repeat==='daglig')return true;
+    if(ev.repeat==='ukentlig')return evDate.getDay()===checkDate.getDay();
+    if(ev.repeat==='manedlig')return evDate.getDate()===checkDate.getDate();
+    if(ev.repeat==='arlig')return evDate.getDate()===checkDate.getDate()&&evDate.getMonth()===checkDate.getMonth();
+    return false;
+  }).map(([id,ev])=>({...ev,id})).sort((a,b)=>(a.start||'').localeCompare(b.start||''));
+}
+
+function updateClock(){
+  const now=new Date();
+  document.getElementById('tbTime').textContent=String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
+  document.getElementById('tbDate').textContent=DAYS_FULL[((now.getDay()+6)%7)]+' '+now.getDate()+'. '+MONTHS_NO[now.getMonth()]+' '+now.getFullYear();
+}
+
+function renderWeekStrip(){
+  const monday=getWeekMonday(selectedDate),td=todayStr();
+  const selStr=fmt(selectedDate.getFullYear(),selectedDate.getMonth(),selectedDate.getDate());
+  let html='';
+  for(let i=0;i<7;i++){
+    const d=new Date(monday);d.setDate(d.getDate()+i);
+    const ds=fmt(d.getFullYear(),d.getMonth(),d.getDate()),isT=ds===td,isSel=ds===selStr;
+    const dots=getEventsOn(ds).slice(0,4).map(ev=>`<div class="wsd-dot" style="background:${MEMBERS[ev.members[0]]||'#888'}"></div>`).join('');
+    html+=`<div class="week-strip-day${isSel?' selected':''}" onclick="selectDay('${ds}')"><div class="wsd-name">${DAYS_NO[i]}</div><div class="wsd-num${isT?' today-num':''}">${d.getDate()}</div><div class="wsd-dots">${dots}</div></div>`;
+  }
+  document.getElementById('weekStrip').innerHTML=html;
+}
+
+function renderLeft(){
+  if(leftPanel==='cal'){
+    const y=displayMonth.getFullYear(),m=displayMonth.getMonth();
+    const first=new Date(y,m,1);let sd=first.getDay();if(sd===0)sd=7;
+    const dim=new Date(y,m+1,0).getDate(),pd=new Date(y,m,0).getDate(),td=todayStr();
+    const selStr=fmt(selectedDate.getFullYear(),selectedDate.getMonth(),selectedDate.getDate());
+    let html=`<div class="mini-month-title">${MONTHS_NO[m].charAt(0).toUpperCase()+MONTHS_NO[m].slice(1)} ${y}</div>`;
+    html+=`<div class="mini-weekdays">`+DAYS_NO.map(d=>`<div class="mini-wday">${d[0]}</div>`).join('')+'</div>';
+    html+='<div class="mini-days">';
+    for(let i=sd-1;i>0;i--)html+=`<div class="mini-day">${pd-i+1}</div>`;
+    for(let d=1;d<=dim;d++){const ds=fmt(y,m,d),isT=ds===td,isSel=ds===selStr&&!isT,hasEv=getEventsOn(ds).length>0;html+=`<div class="mini-day cur-month${isT?' today':''}${hasEv&&!isT?' has-event':''}" style="${isSel?'outline:1.5px solid var(--accent);outline-offset:-1px;border-radius:50%':''}" onclick="selectDay('${ds}')">${d}</div>`;}
+    const rem=(7-(sd-1+dim)%7)%7;for(let d=1;d<=rem;d++)html+=`<div class="mini-day">${d}</div>`;
+    html+=`</div><div class="month-nav"><button class="mnav-btn" onclick="shiftDisplayMonth(-1)">‹</button><div class="mnav-label">${MONTHS_NO[m].charAt(0).toUpperCase()+MONTHS_NO[m].slice(1)}</div><button class="mnav-btn" onclick="shiftDisplayMonth(1)">›</button></div>`;
+    html+=`<div class="legend-title">Familiemedlemmer</div>`;
+    const tdStr=todayStr();
+    Object.entries(MEMBERS).forEach(([name,color])=>{
+      const count=getEventsOn(tdStr).filter(e=>e.members.includes(name)).length;
+      html+=`<div class="legend-item"><div class="legend-bar" style="background:${color}"></div><div><div class="legend-name">${name}</div><div class="legend-count">${count>0?count+' hendelse'+(count>1?'r':''):' Fri i dag'}</div></div></div>`;
+    });
+    document.getElementById('leftContent').innerHTML=html;
+  } else if(leftPanel==='weather'){
+    if(!weatherData||!weatherData.current){document.getElementById('leftContent').innerHTML='<div class="empty">Laster vær...</div>';return;}
+    const c=weatherData.current,d=weatherData.daily;
+    let fc='<div class="forecast-row">';
+    for(let i=1;i<5;i++){const dt=new Date(d.time[i]+'T12:00:00');fc+=`<div class="fc-day"><div class="fc-name">${DAYS_NO[(dt.getDay()+6)%7]}</div><div class="fc-icon">${wmoIcon(d.weathercode[i])}</div><div class="fc-max">${Math.round(d.temperature_2m_max[i])}°</div><div class="fc-min">${Math.round(d.temperature_2m_min[i])}°</div></div>`;}
+    fc+='</div>';
+    document.getElementById('leftContent').innerHTML=`
+      <div class="weather-now"><div class="weather-icon">${wmoIcon(c.weathercode)}</div><div><div class="weather-temp">${Math.round(c.temperature_2m)}°C</div><div class="weather-desc">${wmoDesc(c.weathercode)}</div><div class="weather-feels">Føles som ${Math.round(c.apparent_temperature)}°C</div></div></div>
+      <div class="weather-grid">
+        <div class="weather-cell"><div class="weather-cell-label">Vind</div><div class="weather-cell-val">${Math.round(c.windspeed_10m)} km/t</div></div>
+        <div class="weather-cell"><div class="weather-cell-label">Luftfuktighet</div><div class="weather-cell-val">${c.relative_humidity_2m}%</div></div>
+      </div>${fc}`;
+  } else {
+    const items=activeList==='todo'?todoItems:shopItems;
+    const incomplete=Object.entries(items).filter(([,i])=>!i.done);
+    const complete=Object.entries(items).filter(([,i])=>i.done);
+    let html=`<div class="list-tabs-hub">
+      <button class="list-tab-hub${activeList==='todo'?' active':''}" onclick="switchListHub('todo')">✅ Gjøremål</button>
+      <button class="list-tab-hub${activeList==='shop'?' active':''}" onclick="switchListHub('shop')">🛒 Handleliste</button>
+    </div>
+    <div class="list-add-row">
+      <button class="list-add-btn-hub" style="width:100%;border-radius:8px;padding:10px;font-size:14px" onclick="openKb('${activeList}')">+ Legg til ${activeList==='todo'?'gjøremål':'vare'}</button>
+    </div>`;
+    [...incomplete,...complete].forEach(([id,item])=>{
+      const col=MEMBERS[item.member]||'';
+      const badge=item.member?`<span class="list-member-badge" style="background:${col}">${item.member}</span>`:'';
+      html+=`<div class="list-item-hub"><div class="list-check-hub${item.done?' done':''}" onclick="toggleHubItem('${id}',${!item.done})">${item.done?'✓':''}</div><div class="list-item-text-hub${item.done?' done':''}">${item.text}</div>${badge}<button class="list-del-btn" onclick="deleteHubItem('${id}')">×</button></div>`;
+    });
+    if(!incomplete.length&&!complete.length)html+=`<div class="list-empty-hub">${activeList==='todo'?'Ingen gjøremål 🎉':'Handlelisten er tom 🛒'}</div>`;
+    if(complete.length>0)html+=`<button onclick="clearDoneHub()" style="margin-top:10px;width:100%;padding:8px;background:none;border:0.5px solid var(--border);border-radius:8px;color:var(--text2);font-size:12px;cursor:pointer">Fjern fullførte</button>`;
+    document.getElementById('leftContent').innerHTML=html;
+  }
+}
+
+function renderDayEvents(){
+  const selStr=fmt(selectedDate.getFullYear(),selectedDate.getMonth(),selectedDate.getDate());
+  const isToday=selStr===todayStr(),evs=getEventsOn(selStr);
+  const dayName=isToday?'I dag':DAYS_FULL[((selectedDate.getDay()+6)%7)]+' '+selectedDate.getDate()+'. '+MONTHS_NO[selectedDate.getMonth()];
+  let html=`<div class="day-label">${dayName}</div>`;
+  if(!evs.length)html+='<div class="empty">Ingen hendelser</div>';
+  else evs.forEach(ev=>{
+    const col=MEMBERS[ev.members[0]]||'#888',time=ev.start?ev.start+(ev.end?' – '+ev.end:''):'Hele dagen';
+    const tags=ev.members.map(m=>`<span class="hub-tag" style="background:${MEMBERS[m]}">${m}</span>`).join('');
+    html+=`<div class="hub-event"><div class="hub-event-bar" style="background:${col}"></div><div><div class="hub-event-title">${ev.title}</div><div class="hub-event-time">${time}${ev.repeat!=='ingen'?' 🔁':''}</div><div class="hub-event-tags">${tags}</div></div></div>`;
+  });
+  document.getElementById('dayEventsArea').innerHTML=html;
+}
+
+function renderUpcoming(){
+  const now=new Date(),results=[];
+  for(let i=1;i<21;i++){const d=new Date(now);d.setDate(d.getDate()+i);const ds=fmt(d.getFullYear(),d.getMonth(),d.getDate());getEventsOn(ds).forEach(ev=>results.push({dateStr:ds,date:new Date(d),ev}));}
+  const seen={};
+  const filtered=results.filter(({ev})=>{if(ev.repeat==='ingen')return true;seen[ev.id]=(seen[ev.id]||0)+1;return seen[ev.id]<=2;});
+  let html='<div class="upcoming-header-label">Kommende</div>',lastDate='';
+  filtered.slice(0,12).forEach(({dateStr,date,ev})=>{
+    if(dateStr!==lastDate){const tmr=new Date();tmr.setDate(tmr.getDate()+1);const isTmr=dateStr===fmt(tmr.getFullYear(),tmr.getMonth(),tmr.getDate());const label=isTmr?'I morgen':DAYS_FULL[((date.getDay()+6)%7)]+' '+date.getDate()+'. '+MONTHS_NO[date.getMonth()];html+=`<div class="upcoming-date-label">${label}</div>`;lastDate=dateStr;}
+    const col=MEMBERS[ev.members[0]]||'#888';const avatars=ev.members.map(m=>`<div class="upcoming-avatar" style="background:${MEMBERS[m]}">${m[0]}</div>`).join('');
+    html+=`<div class="upcoming-item"><div class="upcoming-color" style="background:${col}"></div><div class="upcoming-info"><div class="upcoming-title">${ev.title}</div><div class="upcoming-time">${ev.start||'Hel dag'}${ev.repeat!=='ingen'?' 🔁':''}</div></div><div class="upcoming-members">${avatars}</div></div>`;
+  });
+  if(!filtered.length)html+='<div class="empty">Ingen kommende hendelser</div>';
+  document.getElementById('upcomingList').innerHTML=html;
+  const n=new Date();document.getElementById('lastUpdated').textContent='Oppdatert '+String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0');
+}
+
+function renderAll(){updateClock();renderLeft();renderWeekStrip();renderDayEvents();renderUpcoming();}
+
+window.setLeftPanel=function(p){
+  leftPanel=p;
+  document.querySelectorAll('.panel-tab').forEach((t,i)=>t.classList.toggle('active',['cal','weather','lists'][i]===p));
+  renderLeft();
+};
+window.selectDay=function(dateStr){const[y,m,d]=dateStr.split('-').map(Number);selectedDate=new Date(y,m-1,d);displayMonth=new Date(y,m-1,1);renderAll();};
+window.shiftDisplayMonth=function(delta){displayMonth.setMonth(displayMonth.getMonth()+delta);renderLeft();};
+window.switchListHub=function(type){activeList=type;renderLeft();};
+
+// List operations
+window.toggleHubItem=async function(id,done){const r=activeList==='todo'?ref(db,'todo/'+id):ref(db,'shopping/'+id);await update(r,{done});};
+window.deleteHubItem=async function(id){const r=activeList==='todo'?ref(db,'todo/'+id):ref(db,'shopping/'+id);await remove(r);};
+window.clearDoneHub=async function(){const items=activeList==='todo'?todoItems:shopItems;await Promise.all(Object.entries(items).filter(([,i])=>i.done).map(([id])=>remove(activeList==='todo'?ref(db,'todo/'+id):ref(db,'shopping/'+id))));};
+
+// Keyboard modal
+window.openKb=function(mode){
+  kbMode=mode; kbMember='';
+  document.getElementById('kbTitle').textContent=mode==='todo'?'Legg til gjøremål':'Legg til vare';
+  document.getElementById('kbInput').value='';
+  const row=document.getElementById('kbMemberRow');
+  row.innerHTML=`<span style="font-size:11px;color:var(--text2);margin-right:6px">Hvem:</span>`+Object.entries(MEMBERS).map(([name,color])=>`<button class="kb-member-btn" style="color:${color};border-color:${color}" data-name="${name}" onclick="selectKbMember(this,'${name}','${color}')">${name}</button>`).join('');
+  document.getElementById('kbOverlay').classList.add('open');
+  setTimeout(()=>document.getElementById('kbInput').focus(),100);
+};
+window.selectKbMember=function(btn,name,color){
+  kbMember=kbMember===name?'':name;
+  document.querySelectorAll('.kb-member-btn').forEach(b=>{const n=b.dataset.name,c=MEMBERS[n];b.style.background=kbMember===n?c:'none';b.style.color=kbMember===n?'white':c;});
+};
+window.closeKb=function(){document.getElementById('kbOverlay').classList.remove('open');};
+window.handleKbOverlay=function(e){if(e.target===document.getElementById('kbOverlay'))closeKb();};
+window.confirmKbAdd=async function(){
+  const text=document.getElementById('kbInput').value.trim();if(!text)return;
+  const r=kbMode==='todo'?todoRef:shopRef;
+  await push(r,{text,done:false,member:kbMember||'',createdAt:Date.now()});
+  closeKb();
+};
+
+function getWeekMonday(date){const d=new Date(date),day=d.getDay(),diff=day===0?-6:1-day;d.setDate(d.getDate()+diff);return d;}
+
+function checkMidnight(){const now=new Date();if(now.getHours()===0&&now.getMinutes()===0){selectedDate=new Date();displayMonth=new Date(now.getFullYear(),now.getMonth(),1);renderAll();}}
+
+// ---- HUB VOICE ----
+let hubRecognition=null, hubVoiceParsed=null;
+
+window.openHubVoice=function(){
+  document.getElementById('hubVoiceOverlay').classList.add('open');
+  document.getElementById('hubVoiceState').textContent='🎤';
+  document.getElementById('hubVoiceStatus').textContent='Trykk for å snakke';
+  document.getElementById('hubVoiceTranscript').textContent='';
+  document.getElementById('hubVoiceResult').style.display='none';
+  document.getElementById('hubVoiceActions').style.display='none';
+  hubVoiceParsed=null;
+  startHubListening();
+};
+window.closeHubVoice=function(){document.getElementById('hubVoiceOverlay').classList.remove('open');document.getElementById('hubMicBtn').classList.remove('mic-active-hub');if(hubRecognition){try{hubRecognition.stop();}catch(e){}}};
+window.handleHubVoiceOverlay=function(e){if(e.target===document.getElementById('hubVoiceOverlay'))closeHubVoice();};
+
+function startHubListening(){
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){document.getElementById('hubVoiceStatus').textContent='Talegjenkjenning støttes ikke';return;}
+  hubRecognition=new SR();
+  hubRecognition.lang='nb-NO';hubRecognition.continuous=false;hubRecognition.interimResults=true;
+  document.getElementById('hubMicBtn').classList.add('mic-active-hub');
+  document.getElementById('hubVoiceState').textContent='🔴';
+  document.getElementById('hubVoiceStatus').textContent='Lytter...';
+  hubRecognition.onresult=(event)=>{
+    const t=event.results[0][0].transcript;
+    document.getElementById('hubVoiceTranscript').textContent='«'+t+'»';
+    if(event.results[0].isFinal){document.getElementById('hubMicBtn').classList.remove('mic-active-hub');document.getElementById('hubVoiceState').textContent='🤔';document.getElementById('hubVoiceStatus').textContent='Forstår...';parseHubVoice(t);}
+  };
+  hubRecognition.onerror=()=>{document.getElementById('hubVoiceState').textContent='❌';document.getElementById('hubVoiceStatus').textContent='Kunne ikke høre deg';document.getElementById('hubMicBtn').classList.remove('mic-active-hub');};
+  hubRecognition.onend=()=>document.getElementById('hubMicBtn').classList.remove('mic-active-hub');
+  hubRecognition.start();
+}
+
+async function parseHubVoice(text){
+  const today=new Date(), todayISO=today.toISOString().split('T')[0];
+  const prompt=`Du er en smart kalenderassistent for familien Nyhlen Allum (Simen, Linda, Alma, Vilma).
+Brukeren sa: "${text}"
+Dagens dato: ${todayISO} (${['søndag','mandag','tirsdag','onsdag','torsdag','fredag','lørdag'][today.getDay()]})
+Returner KUN et JSON-objekt:
+{"type":"kalender"|"todo"|"handleliste","summary":"Kort beskrivelse på norsk","data":{"title/text":"...","date":"YYYY-MM-DD","endDate":"","start":"HH:MM eller tom","end":"","members":["Simen","Linda","Alma","Vilma"],"repeat":"ingen","notes":"","member":"navn eller tom"}}`;
+  try{
+    const res=await fetch('/.netlify/functions/claude',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:[{role:'user',content:prompt}]})});
+    const json=await res.json();
+    const raw=json.content[0].text.replace(/```json|```/g,'').trim();
+    hubVoiceParsed=JSON.parse(raw);
+    document.getElementById('hubVoiceState').textContent=hubVoiceParsed.type==='kalender'?'📅':hubVoiceParsed.type==='todo'?'✅':'🛒';
+    document.getElementById('hubVoiceStatus').textContent='Forstår jeg riktig?';
+    document.getElementById('hubVoiceResultText').textContent=hubVoiceParsed.summary;
+    document.getElementById('hubVoiceResult').style.display='block';
+    document.getElementById('hubVoiceActions').style.display='block';
+  }catch(e){document.getElementById('hubVoiceState').textContent='❌';document.getElementById('hubVoiceStatus').textContent='Noe gikk galt. Prøv igjen.';}
+}
+
+window.confirmHubVoice=async function(){
+  if(!hubVoiceParsed)return;
+  try{
+    if(hubVoiceParsed.type==='kalender'){const d=hubVoiceParsed.data;await push(eventsRef,{...d,updatedAt:Date.now()});}
+    else if(hubVoiceParsed.type==='todo'){await push(todoRef,{text:hubVoiceParsed.data.text||hubVoiceParsed.data.title,member:hubVoiceParsed.data.member||'',done:false,createdAt:Date.now()});}
+    else{await push(shopRef,{text:hubVoiceParsed.data.text||hubVoiceParsed.data.title,member:hubVoiceParsed.data.member||'',done:false,createdAt:Date.now()});}
+    closeHubVoice();
+  }catch(e){document.getElementById('hubVoiceStatus').textContent='Feil: '+e.message;}
+};
+window.retryHubVoice=function(){document.getElementById('hubVoiceResult').style.display='none';document.getElementById('hubVoiceActions').style.display='none';document.getElementById('hubVoiceTranscript').textContent='';hubVoiceParsed=null;startHubListening();};
+
+updateClock();
+setInterval(()=>{updateClock();checkMidnight();},1000);
+</script>
+
+<!-- Voice modal -->
+<div class="kb-overlay" id="hubVoiceOverlay" onclick="handleHubVoiceOverlay(event)">
+  <div class="kb-modal" style="text-align:center;padding:24px 20px 32px">
+    <div class="kb-handle"></div>
+    <div id="hubVoiceState" style="font-size:44px;margin-bottom:10px">🎤</div>
+    <div id="hubVoiceStatus" style="font-size:15px;font-weight:600;margin-bottom:6px">Si hva du vil gjøre</div>
+    <div id="hubVoiceTranscript" style="font-size:13px;color:var(--text2);min-height:20px;margin-bottom:14px;font-style:italic"></div>
+    <div id="hubVoiceResult" style="background:var(--bg);border-radius:10px;padding:12px;margin-bottom:14px;display:none;text-align:left">
+      <div style="font-size:11px;color:var(--text2);margin-bottom:4px;text-transform:uppercase;letter-spacing:1px">Forstår jeg riktig?</div>
+      <div id="hubVoiceResultText" style="font-size:14px;font-weight:500"></div>
+    </div>
+    <div id="hubVoiceActions" style="display:none">
+      <button class="kb-btn" onclick="confirmHubVoice()" style="margin-bottom:8px;width:100%">✅ Ja, legg til</button>
+      <button class="kb-btn" onclick="retryHubVoice()" style="background:var(--surface2);color:var(--text2);width:100%;margin-bottom:8px">🔄 Prøv igjen</button>
+    </div>
+    <button class="kb-btn" onclick="closeHubVoice()" style="background:var(--surface2);color:var(--text2);width:100%">Avbryt</button>
+    <div style="margin-top:14px;font-size:11px;color:var(--text2)">
+      «Legg melk på handlelisten» · «Husk å betale strøm» · «Tannlege fredag kl 14»
+    </div>
+  </div>
+</div>
+</body>
+</html>
