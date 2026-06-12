@@ -716,7 +716,8 @@ Regler:
       })
     });
     const json = await res.json();
-    const raw = json.content[0].text.replace(/```json|```/g,'').trim();
+    const raw = (json.content && json.content[0] && json.content[0].text) ? json.content[0].text.replace(/```json|```/g,'').trim() : JSON.stringify(json);
+console.log('API response:', JSON.stringify(json).substring(0, 200));
     voiceParsed = JSON.parse(raw);
     document.getElementById('voiceState').textContent = voiceParsed.type === 'kalender' ? '📅' : voiceParsed.type === 'todo' ? '✅' : '🛒';
     document.getElementById('voiceStatus').textContent = 'Forstår jeg riktig?';
