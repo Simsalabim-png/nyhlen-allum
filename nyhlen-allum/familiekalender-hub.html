@@ -434,7 +434,7 @@ function startHubListening(){
   const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
   if(!SR){document.getElementById('hubVoiceStatus').textContent='Talegjenkjenning støttes ikke';return;}
   hubRecognition=new SR();
-  hubRecognition.lang='nb-NO';hubRecognition.continuous=false;hubRecognition.interimResults=true;
+  hubRecognition.lang='sv-SE';hubRecognition.continuous=false;hubRecognition.interimResults=true;
   document.getElementById('hubMicBtn').classList.add('mic-active-hub');
   document.getElementById('hubVoiceState').textContent='🔴';
   document.getElementById('hubVoiceStatus').textContent='Lytter...';
