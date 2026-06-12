@@ -738,10 +738,10 @@ window.confirmVoice = async function() {
       await push(eventsRef, { ...d, updatedAt: Date.now() });
       showNotif('Hendelse lagt til! 📅');
     } else if (voiceParsed.type === 'todo') {
-      await push(todoRef, { text: voiceParsed.data.text, member: voiceParsed.data.member||'', done: false, createdAt: Date.now() });
+await push(todoRef, { text: voiceParsed.data.text || voiceParsed.data.title || '', member: voiceParsed.data.member||'', done: false, createdAt: Date.now() });
       showNotif('Gjøremål lagt til! ✅');
     } else {
-      await push(shopRef, { text: voiceParsed.data.text, member: voiceParsed.data.member||'', done: false, createdAt: Date.now() });
+await push(shopRef, { text: voiceParsed.data.text || voiceParsed.data.title || '', member: voiceParsed.data.member||'', done: false, createdAt: Date.now() });
       showNotif('Lagt til handlelisten! 🛒');
     }
     closeVoice();
