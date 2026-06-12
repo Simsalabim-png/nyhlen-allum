@@ -716,6 +716,9 @@ Regler:
       })
     });
     const json = await res.json();
+    if (!json.content || !json.content[0] || !json.content[0].text) {
+      throw new Error('Tomt svar fra AI: ' + JSON.stringify(json).substring(0,100));
+    }
     const raw = json.content[0].text.replace(/```json|```/g,'').trim();
     voiceParsed = JSON.parse(raw);
     document.getElementById('voiceState').textContent = voiceParsed.type === 'kalender' ? '📅' : voiceParsed.type === 'todo' ? '✅' : '🛒';
@@ -725,7 +728,7 @@ Regler:
     document.getElementById('voiceActions').style.display = 'block';
   } catch(e) {
     document.getElementById('voiceState').textContent = '❌';
-    document.getElementById('voiceStatus').textContent = 'Noe gikk galt. Prøv igjen.';
+    document.getElementById('voiceStatus').textContent = 'Feil: ' + e.message;
   }
 }
 
