@@ -284,8 +284,23 @@ async function sendNotification(title, body) {
   } catch(e) { console.log('Notification failed:', e.message); }
 }
 
-// Register push on load
-setTimeout(registerPush, 2000);
+// Show push enable button if not yet registered
+async function checkPushStatus() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+  if (Notification.permission === 'granted') return;
+  // Show banner to enable notifications
+  const banner = document.createElement('div');
+  banner.id = 'pushBanner';
+  banner.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:var(--today);color:white;padding:10px 20px;border-radius:12px;font-size:14px;z-index:999;cursor:pointer;white-space:nowrap;box-shadow:0 4px 12px rgba(0,0,0,0.3)';
+  banner.textContent = '🔔 Aktiver varsler';
+  banner.onclick = async () => {
+    banner.remove();
+    await registerPush();
+    showNotif('Varsler aktivert! 🔔');
+  };
+  document.body.appendChild(banner);
+}
+setTimeout(checkPushStatus, 3000);
 
 const MEMBERS = { Simen:'#378ADD', Linda:'#D4537E', Alma:'#1D9E75', Vilma:'#EF9F27' };
 const DAYS_NO = ['man','tir','ons','tor','fre','lør','søn'];
