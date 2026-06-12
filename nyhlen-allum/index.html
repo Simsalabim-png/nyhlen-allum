@@ -653,7 +653,7 @@ function startListening() {
     return;
   }
   recognition = new SpeechRecognition();
-  recognition.lang = 'nb-NO';
+  recognition.lang = 'sv-SE';
   recognition.continuous = false;
   recognition.interimResults = true;
   recognition.maxAlternatives = 1;
@@ -685,8 +685,9 @@ async function parseVoiceCommand(text) {
   const today = new Date();
   const todayISO = today.toISOString().split('T')[0];
   const prompt = `Du er en smart kalenderassistent for familien Nyhlen Allum (Simen, Linda, Alma, Vilma).
-Brukeren sa: "${text}"
-Dagens dato: ${todayISO} (${['søndag','mandag','tirsdag','onsdag','torsdag','fredag','lørdag'][today.getDay()]})
+Brukeren/användaren sa: "${text}"
+Dagens dato/datum: ${todayISO} (${['søndag/söndag','mandag/måndag','tirsdag/tisdag','onsdag','torsdag/torsdag','fredag','lørdag/lördag'][today.getDay()]})
+Forstå både norsk og svensk input.
 
 Analyser kommandoen og returner KUN et JSON-objekt (ingen forklaring, ingen backticks):
 {
