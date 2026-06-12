@@ -1,0 +1,4 @@
+[build]
+  base = "nyhlen-allum"
+  publish = "nyhlen-allum"
+  functions = "nyhlen-allum/netlify/functions"
