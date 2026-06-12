@@ -237,6 +237,55 @@ const db = getDatabase(app);
 const eventsRef = ref(db, 'events');
 const todoRef   = ref(db, 'todo');
 const shopRef   = ref(db, 'shopping');
+const tokensRef = ref(db, 'pushTokens');
+
+// ---- PUSH NOTIFICATIONS ----
+const VAPID_KEY = 'BI3KTiYqwWSf4-TyNK7rJ0XW2UVRnEQIDKH9u5Vb_qdTC0o83jcK5ura3JecBxoJYOL0ZHuxuLShq6-L8593dMs';
+
+async function registerPush() {
+  try {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+    const reg = await navigator.serviceWorker.register('/sw.js');
+    const permission = await Notification.requestPermission();
+    if (permission !== 'granted') return;
+    const sub = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(VAPID_KEY)
+    });
+    // Store token in Firebase
+    const token = JSON.stringify(sub);
+    await push(tokensRef, { token, ua: navigator.userAgent.substring(0,50), ts: Date.now() });
+    console.log('Push registered');
+  } catch(e) { console.log('Push registration failed:', e.message); }
+}
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) outputArray[i] = rawData.charCodeAt(i);
+  return outputArray;
+}
+
+async function sendNotification(title, body) {
+  try {
+    const snap = await new Promise(resolve => {
+      const unsub = onValue(tokensRef, s => { unsub(); resolve(s); });
+    });
+    const tokenData = snap.val() || {};
+    const tokens = Object.values(tokenData).map(t => t.token).filter(Boolean);
+    if (tokens.length === 0) return;
+    await fetch('/.netlify/functions/notify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tokens, title, body })
+    });
+  } catch(e) { console.log('Notification failed:', e.message); }
+}
+
+// Register push on load
+setTimeout(registerPush, 2000);
 
 const MEMBERS = { Simen:'#378ADD', Linda:'#D4537E', Alma:'#1D9E75', Vilma:'#EF9F27' };
 const DAYS_NO = ['man','tir','ons','tor','fre','lør','søn'];
@@ -584,7 +633,7 @@ window.saveEvent=async function(){
   setSyncStatus('syncing');
   const endDate=document.getElementById('evEndDate').value;
   const ev={title,date,endDate:endDate||'',start:document.getElementById('evStart').value||'',end:document.getElementById('evEnd').value||'',members:[...selectedMembersForm],repeat:selectedRepeat,notes:document.getElementById('evNotes').value.trim(),updatedAt:Date.now()};
-  try{if(editingId){await update(ref(db,'events/'+editingId),ev);}else{await push(eventsRef,ev);}closeAddModal();showNotif(editingId?'Oppdatert!':'Lagret!');}
+  try{if(editingId){await update(ref(db,'events/'+editingId),ev);sendNotification('Nyhlen Allum 📅','Hendelse oppdatert: '+ev.title);}else{await push(eventsRef,ev);sendNotification('Nyhlen Allum 📅','Ny hendelse: '+ev.title);}closeAddModal();showNotif(editingId?'Oppdatert!':'Lagret!');}
   catch(e){showNotif('Feil: '+e.message);setSyncStatus('offline');}
 };
 window.deleteEvent=async function(){if(!editingId)return;setSyncStatus('syncing');try{await remove(ref(db,'events/'+editingId));closeAddModal();showNotif('Slettet');}catch(e){setSyncStatus('offline');}};
@@ -742,10 +791,10 @@ window.confirmVoice = async function() {
       showNotif('Hendelse lagt til! 📅');
     } else if (voiceParsed.type === 'todo') {
       await push(todoRef, { text: voiceParsed.data.text || voiceParsed.data.title || '', member: voiceParsed.data.member||'', done: false, createdAt: Date.now() });
-      showNotif('Gjøremål lagt til! ✅');
+      showNotif('Gjøremål lagt til! ✅');sendNotification('Nyhlen Allum ✅','Nytt gjøremål: '+( voiceParsed.data.text||voiceParsed.data.title||''));
     } else {
       await push(shopRef, { text: voiceParsed.data.text || voiceParsed.data.title || '', member: voiceParsed.data.member||'', done: false, createdAt: Date.now() });
-      showNotif('Lagt til handlelisten! 🛒');
+      showNotif('Lagt til handlelisten! 🛒');sendNotification('Nyhlen Allum 🛒','Ny vare: '+(voiceParsed.data.text||voiceParsed.data.title||''));
     }
     closeVoice();
   } catch(e) { showNotif('Feil: ' + e.message); }
