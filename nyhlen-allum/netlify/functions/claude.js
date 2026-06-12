@@ -1,3 +1,4 @@
+console.log('Function version: 3');
 exports.handler = async function(event) {
   if (event.httpMethod === 'OPTIONS') {
     return {
