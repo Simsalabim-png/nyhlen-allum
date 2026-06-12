@@ -728,7 +728,7 @@ Regler:
     document.getElementById('voiceActions').style.display = 'block';
   } catch(e) {
     document.getElementById('voiceState').textContent = '❌';
-    document.getElementById('voiceStatus').textContent = 'Noe gikk galt. Prøv igjen.';
+    document.getElementById('voiceStatus').textContent = 'Feil: ' + e.message;
   }
 }
 
