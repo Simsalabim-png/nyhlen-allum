@@ -716,12 +716,11 @@ Regler:
       })
     });
     const json = await res.json();
-    const raw = (json.content && json.content[0] && json.content[0].text) ? json.content[0].text.replace(/```json|```/g,'').trim() : JSON.stringify(json);
-console.log('API response:', JSON.stringify(json).substring(0, 200));
+    const raw = json.content[0].text.replace(/```json|```/g,'').trim();
     voiceParsed = JSON.parse(raw);
     document.getElementById('voiceState').textContent = voiceParsed.type === 'kalender' ? '📅' : voiceParsed.type === 'todo' ? '✅' : '🛒';
     document.getElementById('voiceStatus').textContent = 'Forstår jeg riktig?';
-    document.getElementById('voiceResultText').textContent = voiceParsed.summary;
+    document.getElementById('voiceResultText').textContent = voiceParsed.summary || JSON.stringify(voiceParsed.data);
     document.getElementById('voiceResult').style.display = 'block';
     document.getElementById('voiceActions').style.display = 'block';
   } catch(e) {
@@ -738,10 +737,10 @@ window.confirmVoice = async function() {
       await push(eventsRef, { ...d, updatedAt: Date.now() });
       showNotif('Hendelse lagt til! 📅');
     } else if (voiceParsed.type === 'todo') {
-await push(todoRef, { text: voiceParsed.data.text || voiceParsed.data.title || '', member: voiceParsed.data.member||'', done: false, createdAt: Date.now() });
+      await push(todoRef, { text: voiceParsed.data.text || voiceParsed.data.title || '', member: voiceParsed.data.member||'', done: false, createdAt: Date.now() });
       showNotif('Gjøremål lagt til! ✅');
     } else {
-await push(shopRef, { text: voiceParsed.data.text || voiceParsed.data.title || '', member: voiceParsed.data.member||'', done: false, createdAt: Date.now() });
+      await push(shopRef, { text: voiceParsed.data.text || voiceParsed.data.title || '', member: voiceParsed.data.member||'', done: false, createdAt: Date.now() });
       showNotif('Lagt til handlelisten! 🛒');
     }
     closeVoice();
