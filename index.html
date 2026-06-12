@@ -1,0 +1,789 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Nyhlen Allum">
+<title>Nyhlen Allum</title>
+<style>
+  :root {
+    --simen:#378ADD;--linda:#D4537E;--alma:#1D9E75;--vilma:#EF9F27;
+    --bg:#0f0f11;--surface:#1a1a1e;--surface2:#242428;--border:rgba(255,255,255,0.10);
+    --text:#f0f0f2;--text2:#88888f;--today:#7F77DD;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+  body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:var(--bg);color:var(--text);max-width:430px;margin:0 auto;min-height:100vh;}
+  .header{background:var(--surface);padding:16px 16px 0;position:sticky;top:0;z-index:100;border-bottom:0.5px solid var(--border);}
+  .header-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
+  .nav-month{display:flex;align-items:center;gap:8px;}
+  .nav-btn{background:none;border:none;color:var(--text);font-size:20px;padding:4px 8px;cursor:pointer;border-radius:8px;}
+  .month-title{font-size:20px;font-weight:600;min-width:160px;text-align:center;}
+  .add-btn{width:36px;height:36px;background:var(--today);border:none;color:white;border-radius:50%;font-size:22px;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+  .view-tabs{display:flex;}
+  .tab{flex:1;background:none;border:none;padding:10px 4px;font-size:12px;color:var(--text2);cursor:pointer;border-bottom:2px solid transparent;font-weight:500;}
+  .tab.active{color:var(--today);border-bottom-color:var(--today);}
+  .member-bar{padding:10px 16px;display:flex;gap:8px;overflow-x:auto;background:var(--surface);border-bottom:0.5px solid var(--border);}
+  .member-bar::-webkit-scrollbar{display:none;}
+  .member-chip{padding:5px 12px;border-radius:20px;font-size:13px;font-weight:500;border:1.5px solid;cursor:pointer;white-space:nowrap;transition:opacity 0.15s;}
+  .member-chip.inactive{opacity:0.35;}
+  .content{padding:0 0 80px;}
+
+  /* Calendar */
+  .calendar-grid{padding:8px 12px;}
+  .weekdays{display:grid;grid-template-columns:repeat(7,1fr);text-align:center;margin-bottom:4px;}
+  .weekday-label{font-size:11px;color:var(--text2);font-weight:500;padding:4px 0;}
+  .days-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;}
+  .day-cell{min-height:60px;padding:3px;border-radius:8px;cursor:pointer;}
+  .day-num{font-size:13px;font-weight:500;text-align:center;width:24px;height:24px;display:flex;align-items:center;justify-content:center;border-radius:50%;margin:0 auto 2px;}
+  .day-cell.today .day-num{background:var(--today);color:white;}
+  .day-cell.other-month .day-num{color:var(--text2);opacity:0.5;}
+  .day-dots{display:flex;flex-wrap:wrap;gap:2px;justify-content:center;}
+  .day-dot{width:6px;height:6px;border-radius:50%;}
+  .week-view{padding:8px 0;}
+  .week-header{display:grid;grid-template-columns:40px repeat(7,1fr);border-bottom:0.5px solid var(--border);padding:0 8px 8px;}
+  .week-day-head{text-align:center;font-size:11px;color:var(--text2);}
+  .week-day-head .wnum{font-size:18px;font-weight:600;color:var(--text);display:block;}
+  .week-day-head.today .wnum{background:var(--today);color:white;border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;margin:0 auto;}
+  .week-scroll{overflow-y:auto;max-height:calc(100vh - 280px);}
+  .week-time-grid{display:grid;grid-template-columns:40px repeat(7,1fr);}
+  .time-label{font-size:10px;color:var(--text2);text-align:right;padding-right:6px;height:48px;display:flex;align-items:flex-start;padding-top:2px;}
+  .time-col{border-left:0.5px solid var(--border);height:48px;position:relative;}
+  .week-event{position:absolute;left:1px;right:1px;border-radius:4px;font-size:9px;color:white;padding:1px 3px;overflow:hidden;cursor:pointer;z-index:2;}
+  .events-list{padding:0 12px;}
+  .event-date-header{font-size:13px;font-weight:600;color:var(--text2);padding:12px 4px 6px;}
+  .event-item{display:flex;gap:10px;padding:10px 12px;background:var(--surface);border-radius:10px;margin-bottom:6px;cursor:pointer;}
+  .event-color-bar{width:4px;border-radius:2px;flex-shrink:0;min-height:32px;}
+  .event-info{flex:1;min-width:0;}
+  .event-title{font-size:15px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .event-meta{font-size:12px;color:var(--text2);margin-top:2px;}
+  .event-members{display:flex;gap:4px;margin-top:4px;flex-wrap:wrap;}
+  .event-member-tag{font-size:11px;padding:2px 8px;border-radius:10px;color:white;font-weight:500;}
+  .year-view{padding:8px 12px;}
+  .mini-months{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+  .mini-month-title{font-size:13px;font-weight:600;text-align:center;margin-bottom:6px;}
+  .mini-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;}
+  .mini-day{font-size:9px;text-align:center;width:20px;height:20px;display:flex;align-items:center;justify-content:center;border-radius:50%;cursor:pointer;position:relative;}
+  .mini-day.today{background:var(--today);color:white;}
+  .mini-day.has-event::after{content:'';width:4px;height:4px;border-radius:50%;position:absolute;bottom:1px;left:50%;transform:translateX(-50%);background:var(--today);}
+  .mini-day.today::after{display:none;}
+  .mini-day.other-month{color:var(--text2);opacity:0.4;}
+  .mini-weekday{font-size:9px;color:var(--text2);text-align:center;}
+
+  /* Weather */
+  .weather-view{padding:16px;}
+  .weather-header{font-size:13px;color:var(--text2);text-transform:uppercase;letter-spacing:1px;font-weight:500;margin-bottom:12px;}
+  .weather-now{background:var(--surface);border-radius:16px;padding:20px;margin-bottom:12px;display:flex;align-items:center;gap:16px;}
+  .weather-icon{font-size:52px;}
+  .weather-now-info{}
+  .weather-temp{font-size:42px;font-weight:300;letter-spacing:-1px;}
+  .weather-desc{font-size:15px;color:var(--text2);margin-top:2px;}
+  .weather-loc{font-size:12px;color:var(--text2);margin-top:4px;}
+  .weather-details{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px;}
+  .weather-detail{background:var(--surface2);border-radius:10px;padding:10px 12px;}
+  .weather-detail-label{font-size:11px;color:var(--text2);margin-bottom:3px;}
+  .weather-detail-value{font-size:16px;font-weight:500;}
+  .weather-forecast{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:12px;}
+  .forecast-day{background:var(--surface);border-radius:10px;padding:10px 6px;text-align:center;}
+  .forecast-day-name{font-size:11px;color:var(--text2);margin-bottom:4px;}
+  .forecast-icon{font-size:22px;margin:4px 0;}
+  .forecast-temp{font-size:13px;font-weight:500;}
+  .forecast-temp-min{font-size:11px;color:var(--text2);}
+
+  /* Lists */
+  .lists-view{padding:16px;}
+  .list-section{background:var(--surface);border-radius:16px;padding:16px;margin-bottom:14px;}
+  .list-title{font-size:16px;font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:8px;}
+  .list-title-icon{font-size:18px;}
+  .list-add-row{display:flex;gap:8px;margin-bottom:12px;}
+  .list-input{flex:1;padding:10px 12px;background:var(--surface2);border:0.5px solid var(--border);border-radius:10px;font-size:15px;color:var(--text);font-family:inherit;}
+  .list-input:focus{outline:none;border-color:var(--today);}
+  .list-add-btn{padding:10px 16px;background:var(--today);color:white;border:none;border-radius:10px;font-size:15px;cursor:pointer;font-weight:500;}
+  .list-item{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:0.5px solid var(--border);}
+  .list-item:last-child{border-bottom:none;}
+  .list-check{width:22px;height:22px;border-radius:50%;border:1.5px solid var(--border);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all 0.15s;}
+  .list-check.done{background:var(--alma);border-color:var(--alma);}
+  .list-item-text{flex:1;font-size:15px;}
+  .list-item-text.done{text-decoration:line-through;color:var(--text2);}
+  .list-item-del{color:var(--text2);background:none;border:none;font-size:18px;cursor:pointer;padding:0 4px;}
+  .list-member-tag{font-size:11px;padding:2px 8px;border-radius:10px;color:white;font-weight:500;flex-shrink:0;}
+  .list-empty{color:var(--text2);font-size:14px;text-align:center;padding:16px 0;}
+  .list-tabs{display:flex;gap:8px;margin-bottom:14px;}
+  .list-tab{padding:7px 16px;border-radius:20px;border:1px solid var(--border);font-size:13px;cursor:pointer;background:none;color:var(--text2);font-weight:500;}
+  .list-tab.active{background:var(--today);color:white;border-color:var(--today);}
+
+  /* Modals */
+  .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:200;display:none;align-items:flex-end;justify-content:center;}
+  .modal-overlay.open{display:flex;}
+  .modal{background:var(--surface);border-radius:20px 20px 0 0;width:100%;max-width:430px;padding:20px 20px 40px;max-height:90vh;overflow-y:auto;}
+  .modal-handle{width:36px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 16px;}
+  .modal-title{font-size:18px;font-weight:600;margin-bottom:20px;}
+  .form-group{margin-bottom:16px;}
+  .form-label{font-size:13px;color:var(--text2);margin-bottom:6px;display:block;font-weight:500;}
+  .form-input{width:100%;padding:10px 12px;background:var(--bg);border:0.5px solid var(--border);border-radius:10px;font-size:16px;color:var(--text);font-family:inherit;}
+  .form-input:focus{outline:none;border-color:var(--today);}
+  .member-select{display:flex;gap:8px;flex-wrap:wrap;}
+  .member-sel-btn{padding:7px 14px;border-radius:20px;border:1.5px solid;font-size:13px;font-weight:500;cursor:pointer;background:none;}
+  .repeat-options{display:flex;gap:6px;flex-wrap:wrap;}
+  .repeat-btn{padding:6px 12px;border-radius:20px;border:0.5px solid var(--border);font-size:13px;cursor:pointer;background:none;color:var(--text);}
+  .repeat-btn.selected{background:var(--today);color:white;border-color:var(--today);}
+  .time-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .save-btn{width:100%;padding:14px;background:var(--today);color:white;border:none;border-radius:12px;font-size:16px;font-weight:600;cursor:pointer;margin-top:8px;}
+  .cancel-btn{width:100%;padding:12px;background:none;color:var(--text2);border:0.5px solid var(--border);border-radius:12px;font-size:15px;cursor:pointer;margin-top:8px;}
+  .delete-btn{width:100%;padding:12px;background:none;color:#E24B4A;border:0.5px solid #E24B4A;border-radius:12px;font-size:15px;cursor:pointer;margin-top:8px;}
+  .detail-color-strip{height:6px;border-radius:3px;margin-bottom:16px;}
+  .detail-title{font-size:22px;font-weight:600;margin-bottom:8px;}
+  .detail-row{display:flex;align-items:center;gap:10px;margin-bottom:8px;color:var(--text2);font-size:14px;}
+  .notif-banner{position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#1c1c1e;color:white;padding:10px 20px;border-radius:12px;font-size:14px;z-index:999;opacity:0;transition:opacity 0.3s;pointer-events:none;white-space:nowrap;}
+  .notif-banner.show{opacity:1;}
+  .sync-dot{width:8px;height:8px;border-radius:50%;background:var(--alma);display:inline-block;margin-right:6px;}
+  .sync-dot.offline{background:#E24B4A;}
+  .sync-dot.syncing{background:var(--vilma);animation:pulse 1s infinite;}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
+  .empty-state{text-align:center;padding:40px 20px;color:var(--text2);}
+  @keyframes micPulse{0%,100%{transform:scale(1);box-shadow:0 0 0 0 rgba(127,119,221,0.4)}50%{transform:scale(1.05);box-shadow:0 0 0 8px rgba(127,119,221,0)}}
+  .mic-active{background:var(--today)!important;animation:micPulse 1s infinite!important;}
+  .day-view{padding:0;}
+  .day-header{padding:12px 16px;border-bottom:0.5px solid var(--border);}
+  .day-header h2{font-size:22px;font-weight:600;}
+  .day-scroll{overflow-y:auto;max-height:calc(100vh - 240px);}
+</style>
+</head>
+<body>
+<div class="notif-banner" id="notifBanner">Lagret!</div>
+
+<div class="header">
+  <div class="header-top">
+    <div class="nav-month">
+      <button class="nav-btn" onclick="prevPeriod()">‹</button>
+      <div class="month-title" id="periodTitle"></div>
+      <button class="nav-btn" onclick="nextPeriod()">›</button>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <span id="syncStatus"><span class="sync-dot syncing"></span></span>
+      <button class="add-btn" id="micBtn" onclick="toggleVoice()" title="Snakk til appen" style="background:var(--surface2);font-size:18px;">🎤</button>
+      <button class="add-btn" onclick="openAddModal()" id="addBtnMain">+</button>
+    </div>
+  </div>
+  <div class="view-tabs">
+    <button class="tab" onclick="setView('dag')">Dag</button>
+    <button class="tab" onclick="setView('uke')">Uke</button>
+    <button class="tab active" onclick="setView('maned')">Måned</button>
+    <button class="tab" onclick="setView('ar')">År</button>
+    <button class="tab" onclick="setView('ver')">🌤️</button>
+    <button class="tab" onclick="setView('lister')">📋</button>
+  </div>
+</div>
+
+<div class="member-bar" id="memberBar">
+  <div class="member-chip" style="color:#378ADD;border-color:#378ADD" data-member="Simen" onclick="toggleMember('Simen')">Simen</div>
+  <div class="member-chip" style="color:#D4537E;border-color:#D4537E" data-member="Linda" onclick="toggleMember('Linda')">Linda</div>
+  <div class="member-chip" style="color:#1D9E75;border-color:#1D9E75" data-member="Alma" onclick="toggleMember('Alma')">Alma</div>
+  <div class="member-chip" style="color:#EF9F27;border-color:#EF9F27" data-member="Vilma" onclick="toggleMember('Vilma')">Vilma</div>
+</div>
+
+<div class="content" id="mainContent"><div class="empty-state">Kobler til...</div></div>
+
+<!-- Add/Edit Modal -->
+<div class="modal-overlay" id="addModal" onclick="handleOverlayClick(event)">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title" id="modalTitle">Ny hendelse</div>
+    <div class="form-group"><label class="form-label">Tittel</label><input class="form-input" id="evTitle" type="text" placeholder="Hva skjer?" /></div>
+    <div class="form-group"><label class="form-label">Startdato</label><input class="form-input" id="evDate" type="date" /></div>
+    <div class="form-group"><label class="form-label">Sluttdato (valgfritt)</label><input class="form-input" id="evEndDate" type="date" /></div>
+    <div class="form-group"><label class="form-label">Tid (valgfritt)</label><div class="time-row"><input class="form-input" id="evStart" type="time" /><input class="form-input" id="evEnd" type="time" /></div></div>
+    <div class="form-group"><label class="form-label">Hvem</label><div class="member-select">
+      <button class="member-sel-btn" style="color:#378ADD;border-color:#378ADD" data-m="Simen" onclick="toggleMemberSel(this,'Simen')">Simen</button>
+      <button class="member-sel-btn" style="color:#D4537E;border-color:#D4537E" data-m="Linda" onclick="toggleMemberSel(this,'Linda')">Linda</button>
+      <button class="member-sel-btn" style="color:#1D9E75;border-color:#1D9E75" data-m="Alma" onclick="toggleMemberSel(this,'Alma')">Alma</button>
+      <button class="member-sel-btn" style="color:#EF9F27;border-color:#EF9F27" data-m="Vilma" onclick="toggleMemberSel(this,'Vilma')">Vilma</button>
+    </div></div>
+    <div class="form-group"><label class="form-label">Gjentakelse</label><div class="repeat-options">
+      <button class="repeat-btn selected" data-r="ingen" onclick="selectRepeat(this,'ingen')">Ingen</button>
+      <button class="repeat-btn" data-r="daglig" onclick="selectRepeat(this,'daglig')">Daglig</button>
+      <button class="repeat-btn" data-r="ukentlig" onclick="selectRepeat(this,'ukentlig')">Ukentlig</button>
+      <button class="repeat-btn" data-r="manedlig" onclick="selectRepeat(this,'manedlig')">Månedlig</button>
+      <button class="repeat-btn" data-r="arlig" onclick="selectRepeat(this,'arlig')">Årlig</button>
+    </div></div>
+    <div class="form-group"><label class="form-label">Notater</label><textarea class="form-input" id="evNotes" rows="2" placeholder="Ekstra info..."></textarea></div>
+    <button class="save-btn" onclick="saveEvent()">Lagre</button>
+    <button class="cancel-btn" onclick="closeAddModal()">Avbryt</button>
+    <button class="delete-btn" id="deleteBtn" onclick="deleteEvent()" style="display:none">Slett hendelse</button>
+  </div>
+</div>
+
+<!-- Detail Modal -->
+<div class="modal-overlay" id="detailModal" onclick="handleDetailOverlay(event)">
+  <div class="modal" id="detailContent"></div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getDatabase, ref, onValue, push, update, remove } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDHdR4uSVUEPV7fdPwvANc1xYiTX3oV8nQ",
+  authDomain: "nyhlen-allum.firebaseapp.com",
+  databaseURL: "https://nyhlen-allum-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "nyhlen-allum",
+  storageBucket: "nyhlen-allum.firebasestorage.app",
+  messagingSenderId: "558059823130",
+  appId: "1:558059823130:web:15fa1de6567174ed46b1a3"
+};
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+const eventsRef = ref(db, 'events');
+const todoRef   = ref(db, 'todo');
+const shopRef   = ref(db, 'shopping');
+
+const MEMBERS = { Simen:'#378ADD', Linda:'#D4537E', Alma:'#1D9E75', Vilma:'#EF9F27' };
+const DAYS_NO = ['man','tir','ons','tor','fre','lør','søn'];
+const MONTHS_NO = ['januar','februar','mars','april','mai','juni','juli','august','september','oktober','november','desember'];
+
+let currentView = 'maned';
+let currentDate = new Date();
+let activeMembers = new Set(['Simen','Linda','Alma','Vilma']);
+let events = {}, todoItems = {}, shopItems = {};
+let editingId = null;
+let selectedMembersForm = new Set(['Simen','Linda','Alma','Vilma']);
+let selectedRepeat = 'ingen';
+let weatherData = null;
+let weatherLoaded = false;
+
+function setSyncStatus(state) {
+  document.getElementById('syncStatus').innerHTML = `<span class="sync-dot ${state}"></span>`;
+}
+
+onValue(eventsRef, snap => { events = snap.val()||{}; setSyncStatus(''); if(currentView==='maned'||currentView==='dag'||currentView==='uke'||currentView==='ar') render(); });
+onValue(todoRef,   snap => { todoItems = snap.val()||{}; if(currentView==='lister') render(); });
+onValue(shopRef,   snap => { shopItems = snap.val()||{}; if(currentView==='lister') render(); });
+
+// ---- WEATHER ----
+async function fetchWeather() {
+  try {
+    // Söderköping coords: 58.4811, 16.3239
+    const res = await fetch('https://api.open-meteo.com/v1/forecast?latitude=58.4811&longitude=16.3239&current=temperature_2m,weathercode,windspeed_10m,relative_humidity_2m,apparent_temperature&daily=weathercode,temperature_2m_max,temperature_2m_min&timezone=Europe%2FStockholm&forecast_days=5');
+    weatherData = await res.json();
+    weatherLoaded = true;
+    if(currentView==='ver') render();
+  } catch(e) { weatherLoaded = true; }
+}
+fetchWeather();
+setInterval(fetchWeather, 30*60*1000);
+
+function wmoIcon(code) {
+  if(code===0) return '☀️';
+  if(code<=2) return '🌤️';
+  if(code<=3) return '☁️';
+  if(code<=48) return '🌫️';
+  if(code<=57) return '🌦️';
+  if(code<=67) return '🌧️';
+  if(code<=77) return '🌨️';
+  if(code<=82) return '🌧️';
+  if(code<=86) return '🌨️';
+  if(code<=99) return '⛈️';
+  return '🌡️';
+}
+function wmoDesc(code) {
+  if(code===0) return 'Klart';
+  if(code<=2) return 'Delvis skyet';
+  if(code<=3) return 'Overskyet';
+  if(code<=48) return 'Tåke';
+  if(code<=57) return 'Yr';
+  if(code<=67) return 'Regn';
+  if(code<=77) return 'Snø';
+  if(code<=82) return 'Regnbyger';
+  if(code<=86) return 'Snøbyger';
+  if(code<=99) return 'Tordenvær';
+  return 'Ukjent';
+}
+
+function renderWeather() {
+  if(!weatherLoaded) return '<div class="empty-state">🌤️<br>Laster vær...</div>';
+  if(!weatherData||!weatherData.current) return '<div class="empty-state">Kunne ikke laste vær</div>';
+  const c = weatherData.current, d = weatherData.daily;
+  const temp = Math.round(c.temperature_2m);
+  const feels = Math.round(c.apparent_temperature);
+  const icon = wmoIcon(c.weathercode);
+  const desc = wmoDesc(c.weathercode);
+  const wind = Math.round(c.windspeed_10m);
+  const hum = c.relative_humidity_2m;
+  const days = ['man','tir','ons','tor','fre','lør','søn'];
+  let forecastHtml = '';
+  for(let i=1;i<5;i++) {
+    const dt = new Date(d.time[i]+'T12:00:00');
+    const dayName = days[(dt.getDay()+6)%7];
+    forecastHtml += `<div class="forecast-day">
+      <div class="forecast-day-name">${dayName}</div>
+      <div class="forecast-icon">${wmoIcon(d.weathercode[i])}</div>
+      <div class="forecast-temp">${Math.round(d.temperature_2m_max[i])}°</div>
+      <div class="forecast-temp-min">${Math.round(d.temperature_2m_min[i])}°</div>
+    </div>`;
+  }
+  return `<div class="weather-view">
+    <div class="weather-header">Söderköping</div>
+    <div class="weather-now">
+      <div class="weather-icon">${icon}</div>
+      <div class="weather-now-info">
+        <div class="weather-temp">${temp}°C</div>
+        <div class="weather-desc">${desc}</div>
+        <div class="weather-loc">Føles som ${feels}°C</div>
+      </div>
+    </div>
+    <div class="weather-details">
+      <div class="weather-detail"><div class="weather-detail-label">Vind</div><div class="weather-detail-value">${wind} km/t</div></div>
+      <div class="weather-detail"><div class="weather-detail-label">Luftfuktighet</div><div class="weather-detail-value">${hum}%</div></div>
+    </div>
+    <div class="weather-forecast">${forecastHtml}</div>
+  </div>`;
+}
+
+// ---- LISTS ----
+let activeList = 'todo';
+function renderLists() {
+  const items = activeList==='todo' ? todoItems : shopItems;
+  const dbRef = activeList==='todo' ? todoRef : shopRef;
+  const incomplete = Object.entries(items).filter(([,i])=>!i.done);
+  const complete   = Object.entries(items).filter(([,i])=>i.done);
+  let itemsHtml = '';
+  [...incomplete, ...complete].forEach(([id, item]) => {
+    const memberColor = MEMBERS[item.member]||'';
+    const memberTag = item.member ? `<span class="list-member-tag" style="background:${memberColor}">${item.member}</span>` : '';
+    itemsHtml += `<div class="list-item">
+      <div class="list-check${item.done?' done':''}" onclick="toggleListItem('${id}',${!item.done})">${item.done?'✓':''}</div>
+      <div class="list-item-text${item.done?' done':''}">${item.text}</div>
+      ${memberTag}
+      <button class="list-item-del" onclick="deleteListItem('${id}')">×</button>
+    </div>`;
+  });
+  if(!itemsHtml) itemsHtml = `<div class="list-empty">${activeList==='todo'?'Ingen gjøremål 🎉':'Handlelisten er tom 🛒'}</div>`;
+
+  const memberOpts = Object.keys(MEMBERS).map(m=>`<option value="${m}">${m}</option>`).join('');
+
+  return `<div class="lists-view">
+    <div class="list-tabs">
+      <button class="list-tab${activeList==='todo'?' active':''}" onclick="switchList('todo')">✅ Gjøremål</button>
+      <button class="list-tab${activeList==='shop'?' active':''}" onclick="switchList('shop')">🛒 Handleliste</button>
+    </div>
+    <div class="list-section">
+      <div class="list-add-row">
+        <input class="list-input" id="listInput" type="text" placeholder="${activeList==='todo'?'Legg til gjøremål...':'Legg til vare...'}" onkeydown="if(event.key==='Enter')addListItem()" />
+        <button class="list-add-btn" onclick="addListItem()">+</button>
+      </div>
+      <div style="margin-bottom:10px">
+        <select class="form-input" id="listMember" style="font-size:14px;padding:8px 12px">
+          <option value="">Ingen person</option>
+          ${memberOpts}
+        </select>
+      </div>
+      ${itemsHtml}
+      ${complete.length>0?`<button onclick="clearDone()" style="margin-top:12px;width:100%;padding:10px;background:none;border:0.5px solid var(--border);border-radius:10px;color:var(--text2);font-size:13px;cursor:pointer">Fjern fullførte</button>`:''}
+    </div>
+  </div>`;
+}
+
+window.switchList = function(type) { activeList=type; render(); };
+window.addListItem = async function() {
+  const input = document.getElementById('listInput');
+  const member = document.getElementById('listMember').value;
+  const text = input.value.trim();
+  if(!text) return;
+  const dbRef = activeList==='todo' ? todoRef : shopRef;
+  await push(dbRef, { text, done:false, member:member||'', createdAt:Date.now() });
+  input.value='';
+};
+window.toggleListItem = async function(id, done) {
+  const dbRef = activeList==='todo' ? ref(db,'todo/'+id) : ref(db,'shopping/'+id);
+  await update(dbRef, { done });
+};
+window.deleteListItem = async function(id) {
+  const dbRef = activeList==='todo' ? ref(db,'todo/'+id) : ref(db,'shopping/'+id);
+  await remove(dbRef);
+};
+window.clearDone = async function() {
+  const items = activeList==='todo' ? todoItems : shopItems;
+  const promises = Object.entries(items).filter(([,i])=>i.done).map(([id])=>{
+    const dbRef = activeList==='todo' ? ref(db,'todo/'+id) : ref(db,'shopping/'+id);
+    return remove(dbRef);
+  });
+  await Promise.all(promises);
+};
+
+// ---- CALENDAR ----
+function fmt(y,m,d) { const dt=new Date(y,m,d); return dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0')+'-'+String(dt.getDate()).padStart(2,'0'); }
+function today() { const t=new Date(); return fmt(t.getFullYear(),t.getMonth(),t.getDate()); }
+
+function getVisibleEvents(dateStr) {
+  return Object.entries(events).filter(([id,ev]) => {
+    if(!ev.members||!ev.members.some(m=>activeMembers.has(m))) return false;
+    const evDate=new Date(ev.date+'T12:00:00'), checkDate=new Date(dateStr+'T12:00:00');
+    if(ev.endDate&&ev.repeat==='ingen') { const end=new Date(ev.endDate+'T12:00:00'); return checkDate>=evDate&&checkDate<=end; }
+    if(ev.repeat==='ingen') return ev.date===dateStr;
+    if(checkDate<evDate) return false;
+    if(ev.repeat==='daglig') return true;
+    if(ev.repeat==='ukentlig') return evDate.getDay()===checkDate.getDay();
+    if(ev.repeat==='manedlig') return evDate.getDate()===checkDate.getDate();
+    if(ev.repeat==='arlig') return evDate.getDate()===checkDate.getDate()&&evDate.getMonth()===checkDate.getMonth();
+    return false;
+  }).map(([id,ev])=>({...ev,id})).sort((a,b)=>(a.start||'').localeCompare(b.start||''));
+}
+
+window.setView = function(v) {
+  currentView=v;
+  document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',['dag','uke','maned','ar','ver','lister'][i]===v));
+  document.getElementById('memberBar').style.display = (v==='ver'||v==='lister')?'none':'flex';
+  document.getElementById('addBtnMain').style.display = (v==='ver')?'none':'flex';
+  const nav = document.querySelector('.nav-month');
+  nav.style.visibility = (v==='ver'||v==='lister')?'hidden':'visible';
+  render();
+};
+window.prevPeriod = function() {
+  if(currentView==='dag') currentDate.setDate(currentDate.getDate()-1);
+  else if(currentView==='uke') currentDate.setDate(currentDate.getDate()-7);
+  else if(currentView==='maned') currentDate.setMonth(currentDate.getMonth()-1);
+  else if(currentView==='ar') currentDate.setFullYear(currentDate.getFullYear()-1);
+  render();
+};
+window.nextPeriod = function() {
+  if(currentView==='dag') currentDate.setDate(currentDate.getDate()+1);
+  else if(currentView==='uke') currentDate.setDate(currentDate.getDate()+7);
+  else if(currentView==='maned') currentDate.setMonth(currentDate.getMonth()+1);
+  else if(currentView==='ar') currentDate.setFullYear(currentDate.getFullYear()+1);
+  render();
+};
+window.toggleMember = function(name) {
+  if(activeMembers.has(name)){if(activeMembers.size>1)activeMembers.delete(name);}else activeMembers.add(name);
+  document.querySelectorAll('.member-chip').forEach(c=>c.classList.toggle('inactive',!activeMembers.has(c.dataset.member)));
+  render();
+};
+
+function render() {
+  const y=currentDate.getFullYear(), mo=currentDate.getMonth();
+  let title='';
+  if(currentView==='maned') title=MONTHS_NO[mo].charAt(0).toUpperCase()+MONTHS_NO[mo].slice(1)+' '+y;
+  else if(currentView==='dag') title=currentDate.getDate()+'. '+MONTHS_NO[mo]+' '+y;
+  else if(currentView==='uke') title='Uke '+getWeek(currentDate);
+  else if(currentView==='ar') title=String(y);
+  else if(currentView==='ver') title='Vær';
+  else if(currentView==='lister') title='Lister';
+  document.getElementById('periodTitle').textContent=title;
+  const c=document.getElementById('mainContent');
+  if(currentView==='maned') c.innerHTML=renderMonth();
+  else if(currentView==='uke') c.innerHTML=renderWeek();
+  else if(currentView==='dag') c.innerHTML=renderDay();
+  else if(currentView==='ar') c.innerHTML=renderYear();
+  else if(currentView==='ver') c.innerHTML=renderWeather();
+  else if(currentView==='lister') c.innerHTML=renderLists();
+}
+
+function renderMonth() {
+  const y=currentDate.getFullYear(), m=currentDate.getMonth();
+  const firstDay=new Date(y,m,1); let startDow=firstDay.getDay(); if(startDow===0)startDow=7;
+  const daysInMonth=new Date(y,m+1,0).getDate(), prevDays=new Date(y,m,0).getDate(), td=today();
+  let html='<div class="calendar-grid"><div class="weekdays">'+DAYS_NO.map(d=>`<div class="weekday-label">${d}</div>`).join('')+'</div><div class="days-grid">';
+  for(let i=startDow-1;i>0;i--){const dt=fmt(y,m-1,prevDays-i+1);html+=`<div class="day-cell other-month" onclick="dayClick('${dt}')"><div class="day-num">${prevDays-i+1}</div>${renderDots(getVisibleEvents(dt))}</div>`;}
+  for(let d=1;d<=daysInMonth;d++){const dt=fmt(y,m,d);html+=`<div class="day-cell${dt===td?' today':''}" onclick="dayClick('${dt}')"><div class="day-num">${d}</div>${renderDots(getVisibleEvents(dt))}</div>`;}
+  const rem=(7-(startDow-1+daysInMonth)%7)%7;
+  for(let d=1;d<=rem;d++){const dt=fmt(y,m+1,d);html+=`<div class="day-cell other-month" onclick="dayClick('${dt}')"><div class="day-num">${d}</div>${renderDots(getVisibleEvents(dt))}</div>`;}
+  html+='</div></div><div class="events-list">';
+  const upcoming=[];
+  for(let d=1;d<=daysInMonth;d++){const dt=fmt(y,m,d);getVisibleEvents(dt).forEach(ev=>upcoming.push({dateStr:dt,ev}));}
+  if(!upcoming.length) html+='<div class="empty-state">Ingen hendelser denne måneden</div>';
+  else{let last='';upcoming.forEach(({dateStr,ev})=>{if(dateStr!==last){const dt=new Date(dateStr+'T12:00:00');html+=`<div class="event-date-header">${dt.getDate()}. ${MONTHS_NO[dt.getMonth()]}</div>`;last=dateStr;}html+=renderEventItem(ev,dateStr);});}
+  html+='</div>';
+  return html;
+}
+function renderDots(evs){if(!evs.length)return '';return '<div class="day-dots">'+evs.slice(0,3).map(e=>`<div class="day-dot" style="background:${MEMBERS[e.members[0]]||'#999'}"></div>`).join('')+'</div>';}
+function renderEventItem(ev,dateStr){
+  const col=MEMBERS[ev.members[0]]||'#888', time=ev.start?ev.start+(ev.end?'–'+ev.end:''):'Hele dagen';
+  const tags=ev.members.map(m=>`<span class="event-member-tag" style="background:${MEMBERS[m]}">${m}</span>`).join('');
+  const rep=ev.repeat!=='ingen'?' 🔁':'', multi=ev.endDate?` → ${ev.endDate.split('-').reverse().slice(0,2).join('.')}` :'';
+  return `<div class="event-item" onclick="openDetail('${ev.id}','${dateStr}')"><div class="event-color-bar" style="background:${col}"></div><div class="event-info"><div class="event-title">${ev.title}${rep}</div><div class="event-meta">${time}${multi}</div><div class="event-members">${tags}</div></div></div>`;
+}
+function renderWeek(){
+  const monday=getWeekMonday(currentDate), days=[];
+  for(let i=0;i<7;i++){const d=new Date(monday);d.setDate(d.getDate()+i);days.push(d);}
+  const td=today();
+  let html='<div class="week-view"><div class="week-header"><div></div>';
+  days.forEach(d=>{const ds=fmt(d.getFullYear(),d.getMonth(),d.getDate());html+=`<div class="week-day-head${ds===td?' today':''}" onclick="gotoDay('${ds}')"><span style="font-size:10px;color:var(--text2)">${DAYS_NO[((d.getDay()+6)%7)]}</span><span class="wnum">${d.getDate()}</span></div>`;});
+  html+='</div><div class="week-scroll"><div class="week-time-grid">';
+  for(let h=0;h<24;h++){
+    html+=`<div class="time-label">${h>0?String(h).padStart(2,'0')+':00':''}</div>`;
+    days.forEach(d=>{const ds=fmt(d.getFullYear(),d.getMonth(),d.getDate());let inner='';
+      getVisibleEvents(ds).filter(ev=>ev.start&&parseInt(ev.start.split(':')[0])===h).forEach(ev=>{
+        const sh=parseInt(ev.start.split(':')[0]),sm=parseInt(ev.start.split(':')[1]);
+        const eh=ev.end?parseInt(ev.end.split(':')[0]):sh+1,em=ev.end?parseInt(ev.end.split(':')[1]):0;
+        inner+=`<div class="week-event" style="top:${(sm/60)*100}%;height:${Math.max((eh+em/60-sh-sm/60)*48,20)}px;background:${MEMBERS[ev.members[0]]}" onclick="openDetail('${ev.id}','${ds}')">${ev.title}</div>`;
+      });
+      html+=`<div class="time-col">${inner}</div>`;
+    });
+  }
+  html+='</div></div></div>';
+  return html;
+}
+function renderDay(){
+  const ds=fmt(currentDate.getFullYear(),currentDate.getMonth(),currentDate.getDate()), evs=getVisibleEvents(ds), isToday=ds===today();
+  let html=`<div class="day-view"><div class="day-header"><h2>${isToday?'I dag – ':''}${currentDate.getDate()}. ${MONTHS_NO[currentDate.getMonth()]} ${currentDate.getFullYear()}</h2></div>`;
+  if(!evs.length) html+='<div class="empty-state">Ingen hendelser. Trykk + for å legge til!</div>';
+  else{
+    html+='<div class="day-scroll"><div style="display:grid;grid-template-columns:48px 1fr">';
+    for(let h=0;h<24;h++){
+      const hourEvs=evs.filter(ev=>ev.start&&parseInt(ev.start.split(':')[0])===h);
+      html+=`<div style="font-size:11px;color:var(--text2);text-align:right;padding:4px 8px 0 0;height:56px">${h>0?String(h).padStart(2,'0')+':00':''}</div><div style="border-left:0.5px solid var(--border);min-height:56px;padding:4px 8px">`;
+      hourEvs.forEach(ev=>{const col=MEMBERS[ev.members[0]]||'#888';const tags=ev.members.map(m=>`<span style="background:${MEMBERS[m]};color:white;font-size:10px;padding:1px 6px;border-radius:8px;margin-right:3px">${m}</span>`).join('');html+=`<div onclick="openDetail('${ev.id}','${ds}')" style="background:${col}18;border-left:3px solid ${col};padding:6px 8px;border-radius:6px;margin-bottom:4px;cursor:pointer"><div style="font-weight:500;font-size:14px">${ev.title}</div><div style="font-size:12px;color:var(--text2)">${ev.start}${ev.end?'–'+ev.end:''}</div><div style="margin-top:3px">${tags}</div></div>`;});
+      html+='</div>';
+    }
+    html+='</div></div>';
+  }
+  html+='</div>';
+  return html;
+}
+function renderYear(){
+  const y=currentDate.getFullYear();
+  const short=['jan','feb','mar','apr','mai','jun','jul','aug','sep','okt','nov','des'];
+  let html='<div class="year-view"><div class="mini-months">';
+  for(let m=0;m<12;m++){
+    html+=`<div><div class="mini-month-title">${short[m].charAt(0).toUpperCase()+short[m].slice(1)}</div><div class="mini-grid">`;
+    DAYS_NO.forEach(d=>html+=`<div class="mini-weekday">${d[0]}</div>`);
+    const first=new Date(y,m,1);let sd=first.getDay();if(sd===0)sd=7;
+    const dim=new Date(y,m+1,0).getDate(),pd=new Date(y,m,0).getDate(),td=today();
+    for(let i=sd-1;i>0;i--)html+=`<div class="mini-day other-month">${pd-i+1}</div>`;
+    for(let d=1;d<=dim;d++){const ds=fmt(y,m,d),isT=ds===td,hasEv=getVisibleEvents(ds).length>0;html+=`<div class="mini-day${isT?' today':''}${!isT&&hasEv?' has-event':''}" onclick="gotoDay('${ds}')">${d}</div>`;}
+    const rem=(7-(sd-1+dim)%7)%7;for(let d=1;d<=rem;d++)html+=`<div class="mini-day other-month">${d}</div>`;
+    html+='</div></div>';
+  }
+  html+='</div></div>';
+  return html;
+}
+
+window.dayClick=function(dateStr){const evs=getVisibleEvents(dateStr);if(evs.length===1){openDetail(evs[0].id,dateStr);return;}const[y,mo,d]=dateStr.split('-').map(Number);currentDate=new Date(y,mo-1,d);setView('dag');};
+window.gotoDay=function(dateStr){const[y,mo,d]=dateStr.split('-').map(Number);currentDate=new Date(y,mo-1,d);setView('dag');};
+window.openAddModal=function(dateStr){
+  editingId=null;
+  document.getElementById('modalTitle').textContent='Ny hendelse';
+  document.getElementById('evTitle').value='';
+  document.getElementById('evDate').value=dateStr||fmt(currentDate.getFullYear(),currentDate.getMonth(),currentDate.getDate());
+  document.getElementById('evEndDate').value='';
+  document.getElementById('evStart').value='';document.getElementById('evEnd').value='';document.getElementById('evNotes').value='';
+  document.getElementById('deleteBtn').style.display='none';
+  selectedMembersForm=new Set(['Simen','Linda','Alma','Vilma']);selectedRepeat='ingen';
+  updateMemberFormUI();updateRepeatUI();
+  document.getElementById('addModal').classList.add('open');
+};
+window.closeAddModal=function(){document.getElementById('addModal').classList.remove('open');};
+window.handleOverlayClick=function(e){if(e.target===document.getElementById('addModal'))closeAddModal();};
+window.toggleMemberSel=function(btn,name){if(selectedMembersForm.has(name)){if(selectedMembersForm.size>1)selectedMembersForm.delete(name);}else selectedMembersForm.add(name);updateMemberFormUI();};
+function updateMemberFormUI(){document.querySelectorAll('.member-sel-btn').forEach(btn=>{const sel=selectedMembersForm.has(btn.dataset.m);btn.style.background=sel?MEMBERS[btn.dataset.m]:'none';btn.style.color=sel?'white':MEMBERS[btn.dataset.m];});}
+window.selectRepeat=function(btn,val){selectedRepeat=val;updateRepeatUI();};
+function updateRepeatUI(){document.querySelectorAll('.repeat-btn').forEach(b=>b.classList.toggle('selected',b.dataset.r===selectedRepeat));}
+window.saveEvent=async function(){
+  const title=document.getElementById('evTitle').value.trim();if(!title){document.getElementById('evTitle').focus();return;}
+  const date=document.getElementById('evDate').value;if(!date){document.getElementById('evDate').focus();return;}
+  setSyncStatus('syncing');
+  const endDate=document.getElementById('evEndDate').value;
+  const ev={title,date,endDate:endDate||'',start:document.getElementById('evStart').value||'',end:document.getElementById('evEnd').value||'',members:[...selectedMembersForm],repeat:selectedRepeat,notes:document.getElementById('evNotes').value.trim(),updatedAt:Date.now()};
+  try{if(editingId){await update(ref(db,'events/'+editingId),ev);}else{await push(eventsRef,ev);}closeAddModal();showNotif(editingId?'Oppdatert!':'Lagret!');}
+  catch(e){showNotif('Feil: '+e.message);setSyncStatus('offline');}
+};
+window.deleteEvent=async function(){if(!editingId)return;setSyncStatus('syncing');try{await remove(ref(db,'events/'+editingId));closeAddModal();showNotif('Slettet');}catch(e){setSyncStatus('offline');}};
+window.openDetail=function(id,dateStr){
+  const ev=events[id];if(!ev)return;
+  const col=MEMBERS[ev.members[0]]||'#888',time=ev.start?ev.start+(ev.end?' – '+ev.end:''):'Hele dagen';
+  const[y,mo,d]=dateStr.split('-').map(Number),dt=new Date(y,mo-1,d);
+  const dateLabel=DAYS_NO[((dt.getDay()+6)%7)]+' '+d+'. '+MONTHS_NO[mo-1]+' '+y;
+  const multi=ev.endDate?` → ${ev.endDate.split('-').reverse().join('.')}` :'';
+  const rep={ingen:'',daglig:'Daglig',ukentlig:'Ukentlig',manedlig:'Månedlig',arlig:'Årlig'}[ev.repeat];
+  const tags=ev.members.map(m=>`<span class="event-member-tag" style="background:${MEMBERS[m]}">${m}</span>`).join('');
+  document.getElementById('detailContent').innerHTML=`<div class="modal-handle"></div><div class="detail-color-strip" style="background:${col}"></div><div class="detail-title">${ev.title}</div><div class="detail-row">📅 ${dateLabel}${multi}</div><div class="detail-row">🕐 ${time}</div>${rep?`<div class="detail-row">🔁 ${rep}</div>`:''}${ev.notes?`<div class="detail-row">📝 ${ev.notes}</div>`:''}<div class="detail-row" style="gap:6px;flex-wrap:wrap">👥 ${tags}</div><button class="save-btn" style="background:#534AB7;margin-top:16px" onclick="editEvent('${id}')">Rediger</button><button class="cancel-btn" onclick="closeDetail()">Lukk</button>`;
+  document.getElementById('detailModal').classList.add('open');
+};
+window.closeDetail=function(){document.getElementById('detailModal').classList.remove('open');};
+window.handleDetailOverlay=function(e){if(e.target===document.getElementById('detailModal'))closeDetail();};
+window.editEvent=function(id){
+  const ev=events[id];if(!ev)return;closeDetail();editingId=id;
+  document.getElementById('modalTitle').textContent='Rediger hendelse';
+  document.getElementById('evTitle').value=ev.title;document.getElementById('evDate').value=ev.date;
+  document.getElementById('evEndDate').value=ev.endDate||'';
+  document.getElementById('evStart').value=ev.start;document.getElementById('evEnd').value=ev.end;
+  document.getElementById('evNotes').value=ev.notes||'';document.getElementById('deleteBtn').style.display='block';
+  selectedMembersForm=new Set(ev.members);selectedRepeat=ev.repeat;updateMemberFormUI();updateRepeatUI();
+  document.getElementById('addModal').classList.add('open');
+};
+function getWeekMonday(date){const d=new Date(date),day=d.getDay(),diff=day===0?-6:1-day;d.setDate(d.getDate()+diff);return d;}
+function getWeek(date){const d=new Date(Date.UTC(date.getFullYear(),date.getMonth(),date.getDate()));const dn=d.getUTCDay()||7;d.setUTCDate(d.getUTCDate()+4-dn);const ys=new Date(Date.UTC(d.getUTCFullYear(),0,1));return Math.ceil((((d-ys)/86400000)+1)/7);}
+function showNotif(msg){const b=document.getElementById('notifBanner');b.textContent=msg;b.classList.add('show');setTimeout(()=>b.classList.remove('show'),2200);}
+
+// ---- VOICE ----
+let recognition = null;
+let voiceParsed = null;
+
+window.toggleVoice = function() {
+  const modal = document.getElementById('voiceModal');
+  if (modal.classList.contains('open')) { closeVoice(); return; }
+  openVoice();
+};
+
+window.openVoice = function() {
+  document.getElementById('voiceModal').classList.add('open');
+  document.getElementById('voiceState').textContent = '🎤';
+  document.getElementById('voiceStatus').textContent = 'Trykk for å snakke';
+  document.getElementById('voiceTranscript').textContent = '';
+  document.getElementById('voiceResult').style.display = 'none';
+  document.getElementById('voiceActions').style.display = 'none';
+  voiceParsed = null;
+  startListening();
+};
+
+window.closeVoice = function() {
+  document.getElementById('voiceModal').classList.remove('open');
+  document.getElementById('micBtn').classList.remove('mic-active');
+  if (recognition) { try { recognition.stop(); } catch(e){} }
+};
+
+window.handleVoiceOverlay = function(e) {
+  if (e.target === document.getElementById('voiceModal')) closeVoice();
+};
+
+function startListening() {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    document.getElementById('voiceStatus').textContent = 'Talegjenkjenning støttes ikke i denne nettleseren';
+    return;
+  }
+  recognition = new SpeechRecognition();
+  recognition.lang = 'nb-NO';
+  recognition.continuous = false;
+  recognition.interimResults = true;
+  recognition.maxAlternatives = 1;
+
+  document.getElementById('micBtn').classList.add('mic-active');
+  document.getElementById('voiceState').textContent = '🔴';
+  document.getElementById('voiceStatus').textContent = 'Lytter...';
+
+  recognition.onresult = (event) => {
+    const transcript = event.results[0][0].transcript;
+    document.getElementById('voiceTranscript').textContent = '«' + transcript + '»';
+    if (event.results[0].isFinal) {
+      document.getElementById('micBtn').classList.remove('mic-active');
+      document.getElementById('voiceState').textContent = '🤔';
+      document.getElementById('voiceStatus').textContent = 'Forstår...';
+      parseVoiceCommand(transcript);
+    }
+  };
+  recognition.onerror = (e) => {
+    document.getElementById('voiceState').textContent = '❌';
+    document.getElementById('voiceStatus').textContent = 'Kunne ikke høre deg. Prøv igjen.';
+    document.getElementById('micBtn').classList.remove('mic-active');
+  };
+  recognition.onend = () => { document.getElementById('micBtn').classList.remove('mic-active'); };
+  recognition.start();
+}
+
+async function parseVoiceCommand(text) {
+  const today = new Date();
+  const todayISO = today.toISOString().split('T')[0];
+  const prompt = `Du er en smart kalenderassistent for familien Nyhlen Allum (Simen, Linda, Alma, Vilma).
+Brukeren sa: "${text}"
+Dagens dato: ${todayISO} (${['søndag','mandag','tirsdag','onsdag','torsdag','fredag','lørdag'][today.getDay()]})
+
+Analyser kommandoen og returner KUN et JSON-objekt (ingen forklaring, ingen backticks):
+{
+  "type": "kalender" | "todo" | "handleliste",
+  "summary": "Kort beskrivelse av hva som legges til (på norsk)",
+  "data": {
+    For kalender: { "title": "...", "date": "YYYY-MM-DD", "endDate": "", "start": "HH:MM eller tom", "end": "", "members": ["Simen","Linda","Alma","Vilma"], "repeat": "ingen", "notes": "" }
+    For todo: { "text": "...", "member": "navn eller tom streng" }
+    For handleliste: { "text": "...", "member": "navn eller tom streng" }
+  }
+}
+
+Regler:
+- "i morgen" = ${new Date(today.getTime()+86400000).toISOString().split('T')[0]}
+- "mandag" = nærmeste fremtidige mandag
+- Klokkeslett: "klokken 14" = "14:00", "halv tre" = "14:30"
+- Hvis ingen dato nevnes for kalender, bruk dagens dato
+- members skal alltid være en liste, standard er alle fire
+- Hvis et navn nevnes (f.eks. "Simen"), sett kun det navnet i members/member`;
+
+  try {
+    const res = await fetch('/.netlify/functions/claude', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+    const json = await res.json();
+    if (!json.content || !json.content[0] || !json.content[0].text) {
+      throw new Error('Tomt svar fra AI: ' + JSON.stringify(json).substring(0,100));
+    }
+    const raw = json.content[0].text.replace(/```json|```/g,'').trim();
+    voiceParsed = JSON.parse(raw);
+    document.getElementById('voiceState').textContent = voiceParsed.type === 'kalender' ? '📅' : voiceParsed.type === 'todo' ? '✅' : '🛒';
+    document.getElementById('voiceStatus').textContent = 'Forstår jeg riktig?';
+    document.getElementById('voiceResultText').textContent = voiceParsed.summary || JSON.stringify(voiceParsed.data);
+    document.getElementById('voiceResult').style.display = 'block';
+    document.getElementById('voiceActions').style.display = 'block';
+  } catch(e) {
+    document.getElementById('voiceState').textContent = '❌';
+    document.getElementById('voiceStatus').textContent = 'Noe gikk galt. Prøv igjen.';
+  }
+}
+
+window.confirmVoice = async function() {
+  if (!voiceParsed) return;
+  try {
+    if (voiceParsed.type === 'kalender') {
+      const d = voiceParsed.data;
+      await push(eventsRef, { ...d, updatedAt: Date.now() });
+      showNotif('Hendelse lagt til! 📅');
+    } else if (voiceParsed.type === 'todo') {
+      await push(todoRef, { text: voiceParsed.data.text || voiceParsed.data.title || '', member: voiceParsed.data.member||'', done: false, createdAt: Date.now() });
+      showNotif('Gjøremål lagt til! ✅');
+    } else {
+      await push(shopRef, { text: voiceParsed.data.text || voiceParsed.data.title || '', member: voiceParsed.data.member||'', done: false, createdAt: Date.now() });
+      showNotif('Lagt til handlelisten! 🛒');
+    }
+    closeVoice();
+  } catch(e) { showNotif('Feil: ' + e.message); }
+};
+
+window.retryVoice = function() {
+  document.getElementById('voiceResult').style.display = 'none';
+  document.getElementById('voiceActions').style.display = 'none';
+  document.getElementById('voiceTranscript').textContent = '';
+  voiceParsed = null;
+  startListening();
+};
+
+render();
+</script>
+
+<!-- Voice modal -->
+<div class="modal-overlay" id="voiceModal" onclick="handleVoiceOverlay(event)">
+  <div class="modal" style="text-align:center;padding:28px 20px 40px">
+    <div class="modal-handle"></div>
+    <div id="voiceState" style="font-size:48px;margin-bottom:12px">🎤</div>
+    <div id="voiceStatus" style="font-size:16px;font-weight:600;margin-bottom:8px">Si hva du vil gjøre</div>
+    <div id="voiceTranscript" style="font-size:14px;color:var(--text2);min-height:24px;margin-bottom:16px;font-style:italic"></div>
+    <div id="voiceResult" style="background:var(--surface2);border-radius:12px;padding:14px;margin-bottom:16px;display:none;text-align:left">
+      <div style="font-size:12px;color:var(--text2);margin-bottom:6px;text-transform:uppercase;letter-spacing:1px">Forstår jeg riktig?</div>
+      <div id="voiceResultText" style="font-size:15px;font-weight:500"></div>
+    </div>
+    <div id="voiceActions" style="display:none">
+      <button class="save-btn" onclick="confirmVoice()" style="margin-bottom:8px">✅ Ja, legg til</button>
+      <button class="cancel-btn" onclick="retryVoice()">🔄 Prøv igjen</button>
+    </div>
+    <button class="cancel-btn" onclick="closeVoice()" style="margin-top:8px">Avbryt</button>
+    <div style="margin-top:16px;font-size:12px;color:var(--text2)">
+      Eksempler:<br>
+      «Legg melk på handlelisten»<br>
+      «Husk å betale strøm»<br>
+      «Tannlege fredag klokken 14»
+    </div>
+  </div>
+</div>
+</body>
+</html>
