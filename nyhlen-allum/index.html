@@ -252,10 +252,12 @@ async function registerPush() {
       userVisibleOnly: true,
       applicationServerKey: urlBase64ToUint8Array(VAPID_KEY)
     });
-    // Store token in Firebase
+    // Store token in Firebase using endpoint hash as key (avoids duplicates)
     const token = JSON.stringify(sub);
-    await push(tokensRef, { token, ua: navigator.userAgent.substring(0,50), ts: Date.now() });
-    console.log('Push registered');
+    const endpoint = sub.endpoint || '';
+    const key = 'dev_' + endpoint.split('/').pop().substring(0, 40).replace(/[^a-zA-Z0-9]/g, '');
+    await update(ref(db, 'pushTokens/' + key), { token, ua: navigator.userAgent.substring(0,50), ts: Date.now() });
+    console.log('Push registered with key:', key);
   } catch(e) { console.log('Push registration failed:', e.message); }
 }
 
@@ -287,17 +289,9 @@ async function sendNotification(title, body) {
 async function checkPushStatus() {
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
   
-  // Check if already registered with current VAPID key
-  const savedKey = localStorage.getItem('vapidKey');
-  const currentKey = VAPID_KEY;
-  const alreadyRegistered = savedKey === currentKey && Notification.permission === 'granted';
-  
-  if (alreadyRegistered) return; // Already set up, no need to re-register
-  
   if (Notification.permission === 'granted') {
-    // Re-register silently (VAPID key changed)
+    // Permission granted - always re-register to ensure token exists in Firebase
     await registerPush();
-    localStorage.setItem('vapidKey', currentKey);
   } else {
     // Show banner to request permission
     const banner = document.createElement('div');
@@ -307,7 +301,6 @@ async function checkPushStatus() {
     banner.onclick = async () => {
       banner.remove();
       await registerPush();
-      localStorage.setItem('vapidKey', currentKey);
       showNotif('Varsler aktivert! 🔔');
     };
     document.body.appendChild(banner);
