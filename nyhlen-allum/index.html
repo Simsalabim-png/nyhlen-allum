@@ -284,21 +284,34 @@ async function sendNotification(title, body) {
   } catch(e) { console.log('Notification failed:', e.message); }
 }
 
-// Show push enable button if not yet registered
 async function checkPushStatus() {
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
-  if (Notification.permission === 'granted') return;
-  // Show banner to enable notifications
-  const banner = document.createElement('div');
-  banner.id = 'pushBanner';
-  banner.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:var(--today);color:white;padding:10px 20px;border-radius:12px;font-size:14px;z-index:999;cursor:pointer;white-space:nowrap;box-shadow:0 4px 12px rgba(0,0,0,0.3)';
-  banner.textContent = '🔔 Aktiver varsler';
-  banner.onclick = async () => {
-    banner.remove();
+  
+  // Check if already registered with current VAPID key
+  const savedKey = localStorage.getItem('vapidKey');
+  const currentKey = VAPID_KEY;
+  const alreadyRegistered = savedKey === currentKey && Notification.permission === 'granted';
+  
+  if (alreadyRegistered) return; // Already set up, no need to re-register
+  
+  if (Notification.permission === 'granted') {
+    // Re-register silently (VAPID key changed)
     await registerPush();
-    showNotif('Varsler aktivert! 🔔');
-  };
-  document.body.appendChild(banner);
+    localStorage.setItem('vapidKey', currentKey);
+  } else {
+    // Show banner to request permission
+    const banner = document.createElement('div');
+    banner.id = 'pushBanner';
+    banner.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:var(--today);color:white;padding:10px 20px;border-radius:12px;font-size:14px;z-index:999;cursor:pointer;white-space:nowrap;box-shadow:0 4px 12px rgba(0,0,0,0.3)';
+    banner.textContent = '🔔 Aktiver varsler';
+    banner.onclick = async () => {
+      banner.remove();
+      await registerPush();
+      localStorage.setItem('vapidKey', currentKey);
+      showNotif('Varsler aktivert! 🔔');
+    };
+    document.body.appendChild(banner);
+  }
 }
 setTimeout(checkPushStatus, 3000);
 
