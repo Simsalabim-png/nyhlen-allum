@@ -16,19 +16,27 @@ exports.handler = async function(event) {
 
   try {
     const { tokens, title, body } = JSON.parse(event.body);
+    console.log('Received request - tokens:', tokens ? tokens.length : 0, 'title:', title);
     if (!tokens || tokens.length === 0) return { statusCode: 200, headers, body: JSON.stringify({ sent: 0 }) };
 
     const payload = JSON.stringify({ notification: { title, body } });
     let sent = 0;
+    let errors = [];
     for (const tokenStr of tokens) {
       try {
         const subscription = JSON.parse(tokenStr);
         await webpush.sendNotification(subscription, payload);
         sent++;
-      } catch(e) { console.log('Failed:', e.message); }
+        console.log('Sent OK to:', subscription.endpoint.substring(0, 50));
+      } catch(e) { 
+        console.log('Failed:', e.statusCode, e.message); 
+        errors.push(e.message);
+      }
     }
-    return { statusCode: 200, headers, body: JSON.stringify({ sent }) };
+    console.log('Total sent:', sent, 'errors:', errors.length);
+    return { statusCode: 200, headers, body: JSON.stringify({ sent, errors }) };
   } catch(err) {
+    console.log('Handler error:', err.message);
     return { statusCode: 500, headers, body: JSON.stringify({ error: err.message }) };
   }
 };
