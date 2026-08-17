@@ -207,6 +207,13 @@
       <button class="repeat-btn" data-r="manedlig" onclick="selectRepeat(this,'manedlig')">Månedlig</button>
       <button class="repeat-btn" data-r="arlig" onclick="selectRepeat(this,'arlig')">Årlig</button>
     </div></div>
+    <div class="form-group"><label class="form-label">Påminnelse</label><div class="repeat-options">
+      <button class="repeat-btn selected" data-p="0" onclick="selectReminder(this,0)">Ingen</button>
+      <button class="repeat-btn" data-p="5" onclick="selectReminder(this,5)">5 min før</button>
+      <button class="repeat-btn" data-p="60" onclick="selectReminder(this,60)">1 time før</button>
+      <button class="repeat-btn" data-p="120" onclick="selectReminder(this,120)">2 timer før</button>
+      <button class="repeat-btn" data-p="1440" onclick="selectReminder(this,1440)">1 dag før</button>
+    </div></div>
     <div class="form-group"><label class="form-label">Notater</label><textarea class="form-input" id="evNotes" rows="2" placeholder="Ekstra info..."></textarea></div>
     <button class="save-btn" onclick="saveEvent()">Lagre</button>
     <button class="cancel-btn" onclick="closeAddModal()">Avbryt</button>
@@ -256,7 +263,8 @@ async function registerPush() {
     const token = JSON.stringify(sub);
     const endpoint = sub.endpoint || '';
     const key = 'dev_' + endpoint.split('/').pop().substring(0, 40).replace(/[^a-zA-Z0-9]/g, '');
-    await update(ref(db, 'pushTokens/' + key), { token, ua: navigator.userAgent.substring(0,50), ts: Date.now() });
+    const member = localStorage.getItem('deviceMember') || '';
+    await update(ref(db, 'pushTokens/' + key), { token, ua: navigator.userAgent.substring(0,50), ts: Date.now(), member });
     console.log('Push registered with key:', key);
   } catch(e) { console.log('Push registration failed:', e.message); }
 }
@@ -308,6 +316,33 @@ async function checkPushStatus() {
 }
 setTimeout(checkPushStatus, 3000);
 
+// ---- DEVICE IDENTITY (for målrettede påminnelser) ----
+window.velgEnhet = function() {
+  const existing = document.getElementById('deviceModal');
+  if (existing) existing.remove();
+  const cols = { Simen:'#378ADD', Linda:'#D4537E', Alma:'#1D9E75', Vilma:'#EF9F27' };
+  const overlay = document.createElement('div');
+  overlay.id = 'deviceModal';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:1200;display:flex;align-items:center;justify-content:center;padding:24px';
+  const btns = Object.keys(cols).map(n =>
+    `<button style="display:block;width:100%;margin:8px 0;padding:14px;border-radius:14px;border:2px solid ${cols[n]};background:${cols[n]};color:white;font-size:17px;font-weight:600;cursor:pointer" onclick="setDeviceMember('${n}')">${n}</button>`).join('');
+  overlay.innerHTML = `<div style="background:var(--card,#fff);color:var(--text,#111);border-radius:20px;padding:24px;max-width:340px;width:100%;box-shadow:0 10px 40px rgba(0,0,0,0.35)">
+    <div style="font-size:19px;font-weight:700;margin-bottom:6px">Hvem sin enhet er dette?</div>
+    <div style="font-size:14px;opacity:0.75;margin-bottom:14px">Påminnelser sendes bare til deltakerne i en hendelse. Velg hvem som bruker denne telefonen/maskinen.</div>
+    ${btns}
+    <button style="display:block;width:100%;margin:8px 0 0;padding:12px;border-radius:14px;border:1.5px solid #999;background:none;color:inherit;font-size:15px;cursor:pointer" onclick="setDeviceMember('Felles')">Felles enhet (få alle påminnelser)</button>
+  </div>`;
+  document.body.appendChild(overlay);
+};
+window.setDeviceMember = async function(name) {
+  localStorage.setItem('deviceMember', name);
+  const m = document.getElementById('deviceModal');
+  if (m) m.remove();
+  showNotif('Enhet satt til: ' + name + ' ✓');
+  if (Notification.permission === 'granted') await registerPush();
+};
+setTimeout(() => { if (!localStorage.getItem('deviceMember')) window.velgEnhet(); }, 4500);
+
 const MEMBERS = { Simen:'#378ADD', Linda:'#D4537E', Alma:'#1D9E75', Vilma:'#EF9F27' };
 const DAYS_NO = ['man','tir','ons','tor','fre','lør','søn'];
 const MONTHS_NO = ['januar','februar','mars','april','mai','juni','juli','august','september','oktober','november','desember'];
@@ -319,6 +354,7 @@ let events = {}, todoItems = {}, shopItems = {};
 let editingId = null;
 let selectedMembersForm = new Set(['Simen','Linda','Alma','Vilma']);
 let selectedRepeat = 'ingen';
+let selectedReminder = 0;
 let weatherData = null;
 let weatherLoaded = false;
 
@@ -638,8 +674,8 @@ window.openAddModal=function(dateStr){
   document.getElementById('evEndDate').value='';
   document.getElementById('evStart').value='';document.getElementById('evEnd').value='';document.getElementById('evNotes').value='';
   document.getElementById('deleteBtn').style.display='none';
-  selectedMembersForm=new Set(['Simen','Linda','Alma','Vilma']);selectedRepeat='ingen';
-  updateMemberFormUI();updateRepeatUI();
+  selectedMembersForm=new Set(['Simen','Linda','Alma','Vilma']);selectedRepeat='ingen';selectedReminder=0;
+  updateMemberFormUI();updateRepeatUI();updateReminderUI();
   document.getElementById('addModal').classList.add('open');
 };
 window.closeAddModal=function(){document.getElementById('addModal').classList.remove('open');};
@@ -647,13 +683,15 @@ window.handleOverlayClick=function(e){if(e.target===document.getElementById('add
 window.toggleMemberSel=function(btn,name){if(selectedMembersForm.has(name)){if(selectedMembersForm.size>1)selectedMembersForm.delete(name);}else selectedMembersForm.add(name);updateMemberFormUI();};
 function updateMemberFormUI(){document.querySelectorAll('.member-sel-btn').forEach(btn=>{const sel=selectedMembersForm.has(btn.dataset.m);btn.style.background=sel?MEMBERS[btn.dataset.m]:'none';btn.style.color=sel?'white':MEMBERS[btn.dataset.m];});}
 window.selectRepeat=function(btn,val){selectedRepeat=val;updateRepeatUI();};
-function updateRepeatUI(){document.querySelectorAll('.repeat-btn').forEach(b=>b.classList.toggle('selected',b.dataset.r===selectedRepeat));}
+function updateRepeatUI(){document.querySelectorAll('.repeat-btn[data-r]').forEach(b=>b.classList.toggle('selected',b.dataset.r===selectedRepeat));}
+window.selectReminder=function(btn,val){selectedReminder=val;updateReminderUI();};
+function updateReminderUI(){document.querySelectorAll('.repeat-btn[data-p]').forEach(b=>b.classList.toggle('selected',Number(b.dataset.p)===selectedReminder));}
 window.saveEvent=async function(){
   const title=document.getElementById('evTitle').value.trim();if(!title){document.getElementById('evTitle').focus();return;}
   const date=document.getElementById('evDate').value;if(!date){document.getElementById('evDate').focus();return;}
   setSyncStatus('syncing');
   const endDate=document.getElementById('evEndDate').value;
-  const ev={title,date,endDate:endDate||'',start:document.getElementById('evStart').value||'',end:document.getElementById('evEnd').value||'',members:[...selectedMembersForm],repeat:selectedRepeat,notes:document.getElementById('evNotes').value.trim(),updatedAt:Date.now()};
+  const ev={title,date,endDate:endDate||'',start:document.getElementById('evStart').value||'',end:document.getElementById('evEnd').value||'',members:[...selectedMembersForm],repeat:selectedRepeat,reminder:selectedReminder,remindedFor:'',notes:document.getElementById('evNotes').value.trim(),updatedAt:Date.now()};
   try{if(editingId){await update(ref(db,'events/'+editingId),ev);sendNotification('Nyhlen Allum 📅','Hendelse oppdatert: '+ev.title);}else{await push(eventsRef,ev);sendNotification('Nyhlen Allum 📅','Ny hendelse: '+ev.title);}closeAddModal();showNotif(editingId?'Oppdatert!':'Lagret!');}
   catch(e){showNotif('Feil: '+e.message);setSyncStatus('offline');}
 };
@@ -665,8 +703,9 @@ window.openDetail=function(id,dateStr){
   const dateLabel=DAYS_NO[((dt.getDay()+6)%7)]+' '+d+'. '+MONTHS_NO[mo-1]+' '+y;
   const multi=ev.endDate?` → ${ev.endDate.split('-').reverse().join('.')}` :'';
   const rep={ingen:'',daglig:'Daglig',ukentlig:'Ukentlig',manedlig:'Månedlig',arlig:'Årlig'}[ev.repeat];
+  const remTxt={5:'5 min før',60:'1 time før',120:'2 timer før',1440:'1 dag før'}[ev.reminder]||'';
   const tags=ev.members.map(m=>`<span class="event-member-tag" style="background:${MEMBERS[m]}">${m}</span>`).join('');
-  document.getElementById('detailContent').innerHTML=`<div class="modal-handle"></div><div class="detail-color-strip" style="background:${col}"></div><div class="detail-title">${ev.title}</div><div class="detail-row">📅 ${dateLabel}${multi}</div><div class="detail-row">🕐 ${time}</div>${rep?`<div class="detail-row">🔁 ${rep}</div>`:''}${ev.notes?`<div class="detail-row">📝 ${ev.notes}</div>`:''}<div class="detail-row" style="gap:6px;flex-wrap:wrap">👥 ${tags}</div><button class="save-btn" style="background:#534AB7;margin-top:16px" onclick="editEvent('${id}')">Rediger</button><button class="cancel-btn" onclick="closeDetail()">Lukk</button>`;
+  document.getElementById('detailContent').innerHTML=`<div class="modal-handle"></div><div class="detail-color-strip" style="background:${col}"></div><div class="detail-title">${ev.title}</div><div class="detail-row">📅 ${dateLabel}${multi}</div><div class="detail-row">🕐 ${time}</div>${rep?`<div class="detail-row">🔁 ${rep}</div>`:''}${remTxt?`<div class="detail-row">⏰ ${remTxt}</div>`:''}${ev.notes?`<div class="detail-row">📝 ${ev.notes}</div>`:''}<div class="detail-row" style="gap:6px;flex-wrap:wrap">👥 ${tags}</div><button class="save-btn" style="background:#534AB7;margin-top:16px" onclick="editEvent('${id}')">Rediger</button><button class="cancel-btn" onclick="closeDetail()">Lukk</button>`;
   document.getElementById('detailModal').classList.add('open');
 };
 window.closeDetail=function(){document.getElementById('detailModal').classList.remove('open');};
@@ -678,7 +717,7 @@ window.editEvent=function(id){
   document.getElementById('evEndDate').value=ev.endDate||'';
   document.getElementById('evStart').value=ev.start;document.getElementById('evEnd').value=ev.end;
   document.getElementById('evNotes').value=ev.notes||'';document.getElementById('deleteBtn').style.display='block';
-  selectedMembersForm=new Set(ev.members);selectedRepeat=ev.repeat;updateMemberFormUI();updateRepeatUI();
+  selectedMembersForm=new Set(ev.members);selectedRepeat=ev.repeat;selectedReminder=ev.reminder||0;updateMemberFormUI();updateRepeatUI();updateReminderUI();
   document.getElementById('addModal').classList.add('open');
 };
 function getWeekMonday(date){const d=new Date(date),day=d.getDay(),diff=day===0?-6:1-day;d.setDate(d.getDate()+diff);return d;}

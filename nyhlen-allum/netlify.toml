@@ -5,6 +5,9 @@
 [functions]
   node_bundler = "esbuild"
 
+[functions."reminders"]
+  schedule = "*/5 * * * *"
+
 [build.environment]
   SECRETS_SCAN_OMIT_KEYS = "FIREBASE_API_KEY"
   SECRETS_SCAN_SMART_DETECTION_OMIT_VALUES = "AIzaSyDHdR4uSVUEPV7fdPwvANc1xYiTX3oV8nQ"
