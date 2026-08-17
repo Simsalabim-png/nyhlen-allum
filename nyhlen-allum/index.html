@@ -177,12 +177,7 @@
   </div>
 </div>
 
-<div class="member-bar" id="memberBar">
-  <div class="member-chip" style="color:#378ADD;border-color:#378ADD" data-member="Simen" onclick="toggleMember('Simen')">Simen</div>
-  <div class="member-chip" style="color:#D4537E;border-color:#D4537E" data-member="Linda" onclick="toggleMember('Linda')">Linda</div>
-  <div class="member-chip" style="color:#1D9E75;border-color:#1D9E75" data-member="Alma" onclick="toggleMember('Alma')">Alma</div>
-  <div class="member-chip" style="color:#EF9F27;border-color:#EF9F27" data-member="Vilma" onclick="toggleMember('Vilma')">Vilma</div>
-</div>
+<div class="member-bar" id="memberBar"></div>
 
 <div class="content" id="mainContent"><div class="empty-state">Kobler til...</div></div>
 
@@ -195,12 +190,7 @@
     <div class="form-group"><label class="form-label">Startdato</label><input class="form-input" id="evDate" type="date" /></div>
     <div class="form-group"><label class="form-label">Sluttdato (valgfritt)</label><input class="form-input" id="evEndDate" type="date" /></div>
     <div class="form-group"><label class="form-label">Tid (valgfritt)</label><div class="time-row"><input class="form-input" id="evStart" type="time" /><input class="form-input" id="evEnd" type="time" /></div></div>
-    <div class="form-group"><label class="form-label">Hvem</label><div class="member-select">
-      <button class="member-sel-btn" style="color:#378ADD;border-color:#378ADD" data-m="Simen" onclick="toggleMemberSel(this,'Simen')">Simen</button>
-      <button class="member-sel-btn" style="color:#D4537E;border-color:#D4537E" data-m="Linda" onclick="toggleMemberSel(this,'Linda')">Linda</button>
-      <button class="member-sel-btn" style="color:#1D9E75;border-color:#1D9E75" data-m="Alma" onclick="toggleMemberSel(this,'Alma')">Alma</button>
-      <button class="member-sel-btn" style="color:#EF9F27;border-color:#EF9F27" data-m="Vilma" onclick="toggleMemberSel(this,'Vilma')">Vilma</button>
-    </div></div>
+    <div class="form-group"><label class="form-label">Hvem</label><div class="member-select" id="memberSelWrap"></div></div>
     <div class="form-group"><label class="form-label">Gjentakelse</label><div class="repeat-options">
       <button class="repeat-btn selected" data-r="ingen" onclick="selectRepeat(this,'ingen')">Ingen</button>
       <button class="repeat-btn" data-r="daglig" onclick="selectRepeat(this,'daglig')">Daglig</button>
@@ -245,6 +235,7 @@ const db = getDatabase(app);
 const eventsRef = ref(db, 'events');
 const todoRef   = ref(db, 'todo');
 const shopRef   = ref(db, 'shopping');
+const membersRef = ref(db, 'members');
 const tokensRef = ref(db, 'pushTokens');
 
 // ---- PUSH NOTIFICATIONS ----
@@ -333,7 +324,7 @@ window.setTextZoom = function(z) {
 window.velgEnhet = function() {
   const existing = document.getElementById('deviceModal');
   if (existing) existing.remove();
-  const cols = { Simen:'#378ADD', Linda:'#D4537E', Alma:'#1D9E75', Vilma:'#EF9F27' };
+  const cols = MEMBERS;
   const current = localStorage.getItem('deviceMember') || '';
   const curZoom = localStorage.getItem('textZoom') || '1';
   const overlay = document.createElement('div');
@@ -352,6 +343,19 @@ window.velgEnhet = function() {
     <button style="display:block;width:100%;margin:8px 0 0;padding:11px;border-radius:14px;border:1.5px solid #999;background:${current === 'Felles' ? '#999' : 'none'};color:${current === 'Felles' ? 'white' : 'inherit'};font-size:15px;cursor:pointer" onclick="setDeviceMember('Felles')">Felles enhet (få alle påminnelser)${current === 'Felles' ? ' ✓' : ''}</button>
     <div style="font-size:15px;font-weight:700;margin:18px 0 8px">Tekststørrelse</div>
     <div style="display:flex;gap:6px;align-items:stretch">${sizeBtns}</div>
+    <div style="font-size:15px;font-weight:700;margin:18px 0 4px">Familiemedlemmer</div>
+    <div style="font-size:12px;opacity:0.65;margin-bottom:6px">Trykk på fargen for å bytte farge, på navnet for å endre det.</div>
+    ${MEMBER_ORDER.map(n => renamingMember === n
+      ? `<div style="display:flex;gap:6px;margin:6px 0"><input id="memberRenameInput" value="${n}" style="flex:1;min-width:0;padding:9px;border-radius:10px;border:1.5px solid var(--border,#999);background:none;color:inherit;font-size:15px"><button onclick="doRenameMember('${n}')" style="padding:9px 14px;border-radius:10px;border:none;background:var(--today,#534AB7);color:white;font-weight:700;cursor:pointer">✓</button></div>`
+      : `<div style="display:flex;align-items:center;gap:10px;margin:6px 0">
+          <span onclick="cycleMemberColor('${n}')" title="Bytt farge" style="width:22px;height:22px;border-radius:50%;background:${MEMBERS[n]};cursor:pointer;flex:none"></span>
+          <span onclick="startRenameMember('${n}')" style="flex:1;cursor:pointer;font-size:15px">${n}</span>
+          <button onclick="askRemoveMember('${n}',this)" style="border:none;background:none;color:#E24B4A;cursor:pointer;font-size:14px">Fjern</button>
+        </div>`).join('')}
+    <div style="display:flex;gap:6px;margin-top:8px">
+      <input id="newMemberName" placeholder="Nytt navn..." style="flex:1;min-width:0;padding:9px;border-radius:10px;border:1.5px solid var(--border,#999);background:none;color:inherit;font-size:15px" onkeydown="if(event.key==='Enter')addMember()">
+      <button onclick="addMember()" style="padding:9px 14px;border-radius:10px;border:none;background:var(--today,#534AB7);color:white;font-weight:600;cursor:pointer">Legg til</button>
+    </div>
     ${current ? `<button style="display:block;width:100%;margin:16px 0 0;padding:12px;border-radius:14px;border:none;background:var(--today,#534AB7);color:white;font-size:16px;font-weight:600;cursor:pointer" onclick="document.getElementById('deviceModal').remove()">Ferdig</button>` : ''}
   </div>`;
   document.body.appendChild(overlay);
@@ -365,16 +369,19 @@ window.setDeviceMember = async function(name) {
 };
 setTimeout(() => { if (!localStorage.getItem('deviceMember')) window.velgEnhet(); }, 4500);
 
-const MEMBERS = { Simen:'#378ADD', Linda:'#D4537E', Alma:'#1D9E75', Vilma:'#EF9F27' };
+const DEFAULT_MEMBERS = { Simen:'#378ADD', Linda:'#D4537E', Alma:'#1D9E75', Vilma:'#EF9F27' };
+const MEMBER_PALETTE = ['#378ADD','#D4537E','#1D9E75','#EF9F27','#7F77DD','#D97742','#3AA7B8','#A85CA0'];
+let MEMBERS = { ...DEFAULT_MEMBERS };
+let MEMBER_ORDER = Object.keys(DEFAULT_MEMBERS);
 const DAYS_NO = ['man','tir','ons','tor','fre','lør','søn'];
 const MONTHS_NO = ['januar','februar','mars','april','mai','juni','juli','august','september','oktober','november','desember'];
 
 let currentView = 'maned';
 let currentDate = new Date();
-let activeMembers = new Set(['Simen','Linda','Alma','Vilma']);
+let activeMembers = new Set(MEMBER_ORDER);
 let events = {}, todoItems = {}, shopItems = {};
 let editingId = null;
-let selectedMembersForm = new Set(['Simen','Linda','Alma','Vilma']);
+let selectedMembersForm = new Set(MEMBER_ORDER);
 let selectedRepeat = 'ingen';
 let selectedReminder = 0;
 let weatherData = null;
@@ -385,6 +392,70 @@ function setSyncStatus(state) {
 }
 
 onValue(eventsRef, snap => { events = snap.val()||{}; setSyncStatus(''); if(currentView==='maned'||currentView==='dag'||currentView==='uke'||currentView==='ar') render(); });
+
+// ---- MEDLEMMER (egne navn, lagres i databasen) ----
+onValue(membersRef, snap => {
+  const val = snap.val();
+  if (!val) {
+    // Første gang: legg inn standardfamilien i databasen
+    update(membersRef, Object.fromEntries(Object.entries(DEFAULT_MEMBERS).map(([n,c],i)=>[n,{color:c,order:i}])));
+    return;
+  }
+  MEMBER_ORDER = Object.keys(val).sort((a,b)=>((val[a]?.order ?? 99)-(val[b]?.order ?? 99)));
+  MEMBERS = Object.fromEntries(MEMBER_ORDER.map(n=>[n,(val[n]&&val[n].color)||'#888888']));
+  activeMembers = new Set([...activeMembers].filter(n=>MEMBERS[n]));
+  if (activeMembers.size===0) activeMembers = new Set(MEMBER_ORDER);
+  selectedMembersForm = new Set([...selectedMembersForm].filter(n=>MEMBERS[n]));
+  if (selectedMembersForm.size===0) selectedMembersForm = new Set(MEMBER_ORDER);
+  renderMemberBar(); renderMemberFormButtons(); render();
+  if (document.getElementById('deviceModal')) velgEnhet();
+});
+function renderMemberBar(){
+  const bar = document.getElementById('memberBar');
+  if (bar) bar.innerHTML = MEMBER_ORDER.map(n=>`<div class="member-chip${activeMembers.has(n)?'':' inactive'}" style="color:${MEMBERS[n]};border-color:${MEMBERS[n]}" data-member="${n}" onclick="toggleMember('${n}')">${n}</div>`).join('');
+}
+function renderMemberFormButtons(){
+  const wrap = document.getElementById('memberSelWrap');
+  if (wrap) { wrap.innerHTML = MEMBER_ORDER.map(n=>`<button class="member-sel-btn" style="color:${MEMBERS[n]};border-color:${MEMBERS[n]}" data-m="${n}" onclick="toggleMemberSel(this,'${n}')">${n}</button>`).join(''); updateMemberFormUI(); }
+}
+function cleanMemberName(s){ return (s||'').trim().replace(/[.#$/\[\]]/g,'').substring(0,20); }
+window.addMember = async function(){
+  const inp = document.getElementById('newMemberName');
+  const n = cleanMemberName(inp && inp.value);
+  if (!n || MEMBERS[n]) { if(inp) inp.focus(); return; }
+  const used = Object.values(MEMBERS);
+  const color = MEMBER_PALETTE.find(c=>!used.includes(c)) || MEMBER_PALETTE[MEMBER_ORDER.length % MEMBER_PALETTE.length];
+  await update(ref(db,'members/'+n), {color, order: MEMBER_ORDER.length});
+  showNotif(n+' lagt til ✓');
+};
+window.cycleMemberColor = async function(n){
+  const i = MEMBER_PALETTE.indexOf(MEMBERS[n]);
+  await update(ref(db,'members/'+n), {color: MEMBER_PALETTE[(i+1) % MEMBER_PALETTE.length]});
+};
+window.askRemoveMember = function(n, btn){ btn.textContent='Sikker?'; btn.style.fontWeight='700'; btn.onclick=()=>removeMember(n); };
+window.removeMember = async function(n){
+  for (const [id,ev] of Object.entries(events)) if (Array.isArray(ev.members)&&ev.members.includes(n)) await update(ref(db,'events/'+id), {members: ev.members.filter(x=>x!==n)});
+  if (localStorage.getItem('deviceMember')===n) localStorage.removeItem('deviceMember');
+  await remove(ref(db,'members/'+n));
+  showNotif(n+' fjernet');
+};
+let renamingMember = null;
+window.startRenameMember = function(n){ renamingMember = n; velgEnhet(); };
+window.doRenameMember = async function(oldN){
+  const inp = document.getElementById('memberRenameInput');
+  const n = cleanMemberName(inp && inp.value);
+  renamingMember = null;
+  if (!n || n===oldN || MEMBERS[n]) { velgEnhet(); return; }
+  await update(ref(db,'members/'+n), {color: MEMBERS[oldN], order: MEMBER_ORDER.indexOf(oldN)});
+  for (const [id,ev] of Object.entries(events)) if (Array.isArray(ev.members)&&ev.members.includes(oldN)) await update(ref(db,'events/'+id), {members: ev.members.map(x=>x===oldN?n:x)});
+  for (const [id,it] of Object.entries(todoItems)) if (it.member===oldN) await update(ref(db,'todo/'+id), {member:n});
+  for (const [id,it] of Object.entries(shopItems)) if (it.member===oldN) await update(ref(db,'shopping/'+id), {member:n});
+  const tsnap = await new Promise(res=>{const u=onValue(tokensRef,s=>{u();res(s);});});
+  for (const [k,t] of Object.entries(tsnap.val()||{})) if (t.member===oldN) await update(ref(db,'pushTokens/'+k), {member:n});
+  if (localStorage.getItem('deviceMember')===oldN) localStorage.setItem('deviceMember', n);
+  await remove(ref(db,'members/'+oldN));
+  showNotif(oldN+' heter nå '+n+' ✓');
+};
 onValue(todoRef,   snap => { todoItems = snap.val()||{}; if(currentView==='lister') render(); });
 onValue(shopRef,   snap => { shopItems = snap.val()||{}; if(currentView==='lister') render(); });
 
@@ -696,7 +767,7 @@ window.openAddModal=function(dateStr){
   document.getElementById('evEndDate').value='';
   document.getElementById('evStart').value='';document.getElementById('evEnd').value='';document.getElementById('evNotes').value='';
   document.getElementById('deleteBtn').style.display='none';
-  selectedMembersForm=new Set(['Simen','Linda','Alma','Vilma']);selectedRepeat='ingen';selectedReminder=0;
+  selectedMembersForm=new Set(MEMBER_ORDER);selectedRepeat='ingen';selectedReminder=0;
   updateMemberFormUI();updateRepeatUI();updateReminderUI();
   document.getElementById('addModal').classList.add('open');
 };
@@ -815,7 +886,7 @@ function startListening() {
 async function parseVoiceCommand(text) {
   const today = new Date();
   const todayISO = today.toISOString().split('T')[0];
-  const prompt = `Du er en smart kalenderassistent for familien Nyhlen Allum (Simen, Linda, Alma, Vilma).
+  const prompt = `Du er en smart kalenderassistent for familien Nyhlen Allum (${MEMBER_ORDER.join(', ')}).
 Brukeren/användaren sa: "${text}"
 Dagens dato/datum: ${todayISO} (${['søndag/söndag','mandag/måndag','tirsdag/tisdag','onsdag','torsdag/torsdag','fredag','lørdag/lördag'][today.getDay()]})
 Forstå både norsk og svensk input.
@@ -825,7 +896,7 @@ Analyser kommandoen og returner KUN et JSON-objekt (ingen forklaring, ingen back
   "type": "kalender" | "todo" | "handleliste",
   "summary": "Kort beskrivelse av hva som legges til (på norsk)",
   "data": {
-    For kalender: { "title": "...", "date": "YYYY-MM-DD", "endDate": "", "start": "HH:MM eller tom", "end": "", "members": ["Simen","Linda","Alma","Vilma"], "repeat": "ingen", "notes": "" }
+    For kalender: { "title": "...", "date": "YYYY-MM-DD", "endDate": "", "start": "HH:MM eller tom", "end": "", "members": ${JSON.stringify(MEMBER_ORDER)}, "repeat": "ingen", "notes": "" }
     For todo: { "text": "...", "member": "navn eller tom streng" }
     For handleliste: { "text": "...", "member": "navn eller tom streng" }
   }
@@ -836,8 +907,8 @@ Regler:
 - "mandag" = nærmeste fremtidige mandag
 - Klokkeslett: "klokken 14" = "14:00", "halv tre" = "14:30"
 - Hvis ingen dato nevnes for kalender, bruk dagens dato
-- members skal alltid være en liste, standard er alle fire
-- Hvis et navn nevnes (f.eks. "Simen"), sett kun det navnet i members/member`;
+- members skal alltid være en liste, standard er alle medlemmene
+- Hvis et navn nevnes (f.eks. "${MEMBER_ORDER[0]||'Simen'}"), sett kun det navnet i members/member`;
 
   try {
     const res = await fetch('/.netlify/functions/claude', {
