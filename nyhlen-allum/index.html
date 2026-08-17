@@ -345,7 +345,7 @@ window.velgEnhet = function() {
   }).join('');
   const sizeBtns = TEXT_SIZES.map(([z, label]) =>
     `<button data-z="${z}" style="flex:1;padding:10px 4px;border-radius:12px;border:1.5px solid var(--border,#999);background:${curZoom === z ? 'var(--today,#534AB7)' : 'none'};color:${curZoom === z ? 'white' : 'inherit'};font-size:${13 * Math.max(1, Number(z))}px;cursor:pointer" onclick="setTextZoom('${z}')">${label}</button>`).join('');
-  overlay.innerHTML = `<div style="background:var(--card,#fff);color:var(--text,#111);border-radius:20px;padding:24px;max-width:360px;width:100%;max-height:90vh;overflow-y:auto;box-shadow:0 10px 40px rgba(0,0,0,0.35)">
+  overlay.innerHTML = `<div style="background:var(--surface,#fff);color:var(--text,#111);border-radius:20px;padding:24px;max-width:360px;width:100%;max-height:90vh;overflow-y:auto;box-shadow:0 10px 40px rgba(0,0,0,0.35)">
     <div style="font-size:19px;font-weight:700;margin-bottom:6px">Hvem sin enhet er dette?</div>
     <div style="font-size:14px;opacity:0.75;margin-bottom:10px">Påminnelser sendes bare til deltakerne i en hendelse. Velg hvem som bruker denne telefonen/maskinen.</div>
     ${btns}
