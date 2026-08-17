@@ -6,6 +6,10 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Nyhlen Allum">
+<link rel="manifest" href="/manifest.json">
+<link rel="apple-touch-icon" sizes="180x180" href="/icon-180.png">
+<link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png">
+<meta name="theme-color" content="#0f0f11">
 <title>Nyhlen Allum</title>
 <style>
   :root {
@@ -687,10 +691,12 @@ function renderMonth() {
   const rem=(7-(startDow-1+daysInMonth)%7)%7;
   for(let d=1;d<=rem;d++){const dt=fmt(y,m+1,d);html+=`<div class="day-cell other-month" onclick="dayClick('${dt}')"><div class="day-num">${d}</div>${renderDots(getVisibleEvents(dt))}</div>`;}
   html+='</div></div><div class="events-list">';
+  // Listen starter på dagens dato – hendelser som allerede har vært vises ikke i inneværende måned
   const upcoming=[];
-  for(let d=1;d<=daysInMonth;d++){const dt=fmt(y,m,d);getVisibleEvents(dt).forEach(ev=>upcoming.push({dateStr:dt,ev}));}
-  if(!upcoming.length) html+='<div class="empty-state">Ingen hendelser denne måneden</div>';
-  else{let last='';upcoming.forEach(({dateStr,ev})=>{if(dateStr!==last){const dt=new Date(dateStr+'T12:00:00');html+=`<div class="event-date-header">${dt.getDate()}. ${MONTHS_NO[dt.getMonth()]}</div>`;last=dateStr;}html+=renderEventItem(ev,dateStr);});}
+  const startDay=(y===new Date().getFullYear()&&m===new Date().getMonth())?new Date().getDate():1;
+  for(let d=startDay;d<=daysInMonth;d++){const dt=fmt(y,m,d);getVisibleEvents(dt).forEach(ev=>upcoming.push({dateStr:dt,ev}));}
+  if(!upcoming.length) html+='<div class="empty-state">'+(startDay>1?'Ingen flere hendelser denne måneden':'Ingen hendelser denne måneden')+'</div>';
+  else{let last='';upcoming.forEach(({dateStr,ev})=>{if(dateStr!==last){const dt=new Date(dateStr+'T12:00:00');const idag=dateStr===today();html+=`<div class="event-date-header">${idag?'I dag – ':''}${dt.getDate()}. ${MONTHS_NO[dt.getMonth()]}</div>`;last=dateStr;}html+=renderEventItem(ev,dateStr);});}
   html+='</div>';
   return html;
 }
