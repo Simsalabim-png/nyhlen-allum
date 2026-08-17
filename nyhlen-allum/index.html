@@ -162,6 +162,7 @@
     </div>
     <div style="display:flex;align-items:center;gap:8px">
       <span id="syncStatus"><span class="sync-dot syncing"></span></span>
+      <button class="add-btn" onclick="velgEnhet()" title="Min enhet og tekststørrelse" style="background:var(--surface2);font-size:16px;">⚙️</button>
       <button class="add-btn" id="micBtn" onclick="toggleVoice()" title="Snakk til appen" style="background:var(--surface2);font-size:18px;">🎤</button>
       <button class="add-btn" onclick="openAddModal()" id="addBtnMain">+</button>
     </div>
@@ -316,21 +317,42 @@ async function checkPushStatus() {
 }
 setTimeout(checkPushStatus, 3000);
 
-// ---- DEVICE IDENTITY (for målrettede påminnelser) ----
+// ---- DEVICE IDENTITY + TEKSTSTØRRELSE ----
+const TEXT_SIZES = [['0.85','Liten'],['1','Normal'],['1.2','Stor'],['1.4','Ekstra stor']];
+function applyTextZoom() { document.documentElement.style.zoom = localStorage.getItem('textZoom') || '1'; }
+applyTextZoom();
+window.setTextZoom = function(z) {
+  localStorage.setItem('textZoom', z);
+  applyTextZoom();
+  document.querySelectorAll('#deviceModal [data-z]').forEach(b => {
+    const on = b.dataset.z === z;
+    b.style.background = on ? 'var(--today,#534AB7)' : 'none';
+    b.style.color = on ? 'white' : 'inherit';
+  });
+};
 window.velgEnhet = function() {
   const existing = document.getElementById('deviceModal');
   if (existing) existing.remove();
   const cols = { Simen:'#378ADD', Linda:'#D4537E', Alma:'#1D9E75', Vilma:'#EF9F27' };
+  const current = localStorage.getItem('deviceMember') || '';
+  const curZoom = localStorage.getItem('textZoom') || '1';
   const overlay = document.createElement('div');
   overlay.id = 'deviceModal';
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:1200;display:flex;align-items:center;justify-content:center;padding:24px';
-  const btns = Object.keys(cols).map(n =>
-    `<button style="display:block;width:100%;margin:8px 0;padding:14px;border-radius:14px;border:2px solid ${cols[n]};background:${cols[n]};color:white;font-size:17px;font-weight:600;cursor:pointer" onclick="setDeviceMember('${n}')">${n}</button>`).join('');
-  overlay.innerHTML = `<div style="background:var(--card,#fff);color:var(--text,#111);border-radius:20px;padding:24px;max-width:340px;width:100%;box-shadow:0 10px 40px rgba(0,0,0,0.35)">
+  const btns = Object.keys(cols).map(n => {
+    const sel = current === n;
+    return `<button style="display:block;width:100%;margin:8px 0;padding:13px;border-radius:14px;border:2px solid ${cols[n]};background:${sel ? cols[n] : 'none'};color:${sel ? 'white' : cols[n]};font-size:17px;font-weight:600;cursor:pointer" onclick="setDeviceMember('${n}')">${n}${sel ? ' ✓' : ''}</button>`;
+  }).join('');
+  const sizeBtns = TEXT_SIZES.map(([z, label]) =>
+    `<button data-z="${z}" style="flex:1;padding:10px 4px;border-radius:12px;border:1.5px solid var(--border,#999);background:${curZoom === z ? 'var(--today,#534AB7)' : 'none'};color:${curZoom === z ? 'white' : 'inherit'};font-size:${13 * Math.max(1, Number(z))}px;cursor:pointer" onclick="setTextZoom('${z}')">${label}</button>`).join('');
+  overlay.innerHTML = `<div style="background:var(--card,#fff);color:var(--text,#111);border-radius:20px;padding:24px;max-width:360px;width:100%;max-height:90vh;overflow-y:auto;box-shadow:0 10px 40px rgba(0,0,0,0.35)">
     <div style="font-size:19px;font-weight:700;margin-bottom:6px">Hvem sin enhet er dette?</div>
-    <div style="font-size:14px;opacity:0.75;margin-bottom:14px">Påminnelser sendes bare til deltakerne i en hendelse. Velg hvem som bruker denne telefonen/maskinen.</div>
+    <div style="font-size:14px;opacity:0.75;margin-bottom:10px">Påminnelser sendes bare til deltakerne i en hendelse. Velg hvem som bruker denne telefonen/maskinen.</div>
     ${btns}
-    <button style="display:block;width:100%;margin:8px 0 0;padding:12px;border-radius:14px;border:1.5px solid #999;background:none;color:inherit;font-size:15px;cursor:pointer" onclick="setDeviceMember('Felles')">Felles enhet (få alle påminnelser)</button>
+    <button style="display:block;width:100%;margin:8px 0 0;padding:11px;border-radius:14px;border:1.5px solid #999;background:${current === 'Felles' ? '#999' : 'none'};color:${current === 'Felles' ? 'white' : 'inherit'};font-size:15px;cursor:pointer" onclick="setDeviceMember('Felles')">Felles enhet (få alle påminnelser)${current === 'Felles' ? ' ✓' : ''}</button>
+    <div style="font-size:15px;font-weight:700;margin:18px 0 8px">Tekststørrelse</div>
+    <div style="display:flex;gap:6px;align-items:stretch">${sizeBtns}</div>
+    ${current ? `<button style="display:block;width:100%;margin:16px 0 0;padding:12px;border-radius:14px;border:none;background:var(--today,#534AB7);color:white;font-size:16px;font-weight:600;cursor:pointer" onclick="document.getElementById('deviceModal').remove()">Ferdig</button>` : ''}
   </div>`;
   document.body.appendChild(overlay);
 };
