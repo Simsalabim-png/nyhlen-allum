@@ -54,10 +54,12 @@ const REM_TEXT = { 5: 'Om 5 minutter', 60: 'Om 1 time', 120: 'Om 2 timer', 1440:
 
 exports.handler = async function () {
   const now = Date.now();
-  const [events, tokens] = await Promise.all([
+  const [events, tokens, membersNode] = await Promise.all([
     fetch(DB + '/events.json').then(r => r.json()),
-    fetch(DB + '/pushTokens.json').then(r => r.json())
+    fetch(DB + '/pushTokens.json').then(r => r.json()),
+    fetch(DB + '/members.json').then(r => r.json()).catch(() => null)
   ]);
+  const totalMembers = membersNode ? Object.keys(membersNode).length : 4;
   const devices = Object.values(tokens || {}).filter(t => t && t.token);
   let checked = 0, sent = 0;
 
@@ -81,7 +83,7 @@ exports.handler = async function () {
     const time = ev.start ? ' kl. ' + ev.start : '';
     const payload = JSON.stringify({ notification: {
       title: '⏰ Påminnelse',
-      body: `${when}: ${ev.title}${time}` + (members.length && members.length < 4 ? ` (${members.join(', ')})` : '')
+      body: `${when}: ${ev.title}${time}` + (members.length && members.length < totalMembers ? ` (${members.join(', ')})` : '')
     }});
     for (const t of targets) {
       try { await webpush.sendNotification(JSON.parse(t.token), payload); sent++; }
