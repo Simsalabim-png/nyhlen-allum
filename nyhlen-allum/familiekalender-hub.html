@@ -157,12 +157,7 @@
       <div class="topbar-date" id="tbDate"></div>
     </div>
     <div class="topbar-right">
-      <div class="member-dots">
-        <div class="member-dot-wrap"><div class="member-dot" style="background:var(--simen)"></div><div class="member-dot-label">Simen</div></div>
-        <div class="member-dot-wrap"><div class="member-dot" style="background:var(--linda)"></div><div class="member-dot-label">Linda</div></div>
-        <div class="member-dot-wrap"><div class="member-dot" style="background:var(--alma)"></div><div class="member-dot-label">Alma</div></div>
-        <div class="member-dot-wrap"><div class="member-dot" style="background:var(--vilma)"></div><div class="member-dot-label">Vilma</div></div>
-      </div>
+      <div class="member-dots" id="memberDots"></div>
       <span class="sync-dot syncing" id="syncDot"></span>
       <button onclick="openHubVoice()" id="hubMicBtn" style="background:var(--surface2);border:0.5px solid var(--border);color:white;border-radius:50%;width:36px;height:36px;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;">🎤</button>
       <div class="topbar-time" id="tbTime"></div>
@@ -225,7 +220,23 @@ const eventsRef = ref(db,'events');
 const todoRef   = ref(db,'todo');
 const shopRef   = ref(db,'shopping');
 
-const MEMBERS = {Simen:'#378ADD',Linda:'#D4537E',Alma:'#1D9E75',Vilma:'#EF9F27'};
+const DEFAULT_MEMBERS = {Simen:'#378ADD',Linda:'#D4537E',Alma:'#1D9E75',Vilma:'#EF9F27'};
+let MEMBERS = {...DEFAULT_MEMBERS};
+let MEMBER_ORDER = Object.keys(DEFAULT_MEMBERS);
+const membersRef = ref(db,'members');
+function renderMemberDots(){
+  const el = document.getElementById('memberDots');
+  if (el) el.innerHTML = MEMBER_ORDER.map(n=>`<div class="member-dot-wrap"><div class="member-dot" style="background:${MEMBERS[n]}"></div><div class="member-dot-label">${n}</div></div>`).join('');
+}
+onValue(membersRef, snap => {
+  const val = snap.val();
+  if (!val) { renderMemberDots(); return; } // hovedappen seeder databasen
+  MEMBER_ORDER = Object.keys(val).sort((a,b)=>((val[a]?.order ?? 99)-(val[b]?.order ?? 99)));
+  MEMBERS = Object.fromEntries(MEMBER_ORDER.map(n=>[n,(val[n]&&val[n].color)||'#888888']));
+  renderMemberDots();
+  renderAll();
+});
+renderMemberDots();
 const DAYS_NO = ['man','tir','ons','tor','fre','lør','søn'];
 const DAYS_FULL = ['mandag','tirsdag','onsdag','torsdag','fredag','lørdag','søndag'];
 const MONTHS_NO = ['januar','februar','mars','april','mai','juni','juli','august','september','oktober','november','desember'];
@@ -450,11 +461,11 @@ function startHubListening(){
 
 async function parseHubVoice(text){
   const today=new Date(), todayISO=today.toISOString().split('T')[0];
-  const prompt=`Du er en smart kalenderassistent for familien Nyhlen Allum (Simen, Linda, Alma, Vilma).
+  const prompt=`Du er en smart kalenderassistent for familien Nyhlen Allum (${MEMBER_ORDER.join(', ')}).
 Brukeren sa: "${text}"
 Dagens dato: ${todayISO} (${['søndag','mandag','tirsdag','onsdag','torsdag','fredag','lørdag'][today.getDay()]})
 Returner KUN et JSON-objekt:
-{"type":"kalender"|"todo"|"handleliste","summary":"Kort beskrivelse på norsk","data":{"title/text":"...","date":"YYYY-MM-DD","endDate":"","start":"HH:MM eller tom","end":"","members":["Simen","Linda","Alma","Vilma"],"repeat":"ingen","notes":"","member":"navn eller tom"}}`;
+{"type":"kalender"|"todo"|"handleliste","summary":"Kort beskrivelse på norsk","data":{"title/text":"...","date":"YYYY-MM-DD","endDate":"","start":"HH:MM eller tom","end":"","members":${JSON.stringify(MEMBER_ORDER)},"repeat":"ingen","notes":"","member":"navn eller tom"}}`;
   try{
     const res=await fetch('/.netlify/functions/claude',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:[{role:'user',content:prompt}]})});
     const json=await res.json();
