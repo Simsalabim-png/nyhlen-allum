@@ -53,6 +53,8 @@ function nextOccurrence(ev, fromMs) {
 const REM_TEXT = { 5: 'Om 5 minutter', 60: 'Om 1 time', 120: 'Om 2 timer', 1440: 'I morgen' };
 
 exports.handler = async function () {
+  // Sikring: kjør bare på siten som faktisk har varselnøkkelen (hindrer at en kopi-site markerer påminnelser som sendt uten å kunne sende dem)
+  if (!process.env.VAPID_PRIVATE_KEY) { console.log('Ingen VAPID_PRIVATE_KEY – hopper over.'); return { statusCode: 200, body: 'skipped' }; }
   const now = Date.now();
   const [events, tokens, membersNode] = await Promise.all([
     fetch(DB + '/events.json').then(r => r.json()),
