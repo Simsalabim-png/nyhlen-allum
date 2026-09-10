@@ -1,45 +1,26 @@
-console.log('Function version: 3');
-exports.handler = async function(event) {
-  if (event.httpMethod === 'OPTIONS') {
-    return {
-      statusCode: 200,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': 'Content-Type',
-        'Access-Control-Allow-Methods': 'POST, OPTIONS'
-      },
-      body: ''
-    };
+const { authorizeMember, jsonBody, response, fail, enforceRateLimit } = require('./lib/security');
+
+function validMessages(messages) {
+  if (!Array.isArray(messages) || messages.length < 1 || messages.length > 12) return false;
+  let total = 0;
+  for (const message of messages) {
+    if (!message || !['user', 'assistant'].includes(message.role) || typeof message.content !== 'string' || !message.content.trim() || message.content.length > 4000) return false;
+    total += message.content.length;
   }
+  return total <= 12000;
+}
+
+// AI is deliberately fail-closed until a separate decision approves a paid external provider.
+exports.createHandler = (deps = {}) => async function handler(event) {
+  if (event.httpMethod === 'OPTIONS') return response(204);
+  if (event.httpMethod !== 'POST') return response(405, { error: 'Method not allowed' });
   try {
-    const body = JSON.parse(event.body);
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': process.env.ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01'
-      },
-      body: JSON.stringify({
-        model: 'claude-haiku-4-5',
-        max_tokens: 1000,
-        messages: body.messages
-      })
-    });
-    const text = await response.text();
-    return {
-      statusCode: 200,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Content-Type': 'application/json'
-      },
-      body: text
-    };
-  } catch (err) {
-    return {
-      statusCode: 500,
-      headers: { 'Access-Control-Allow-Origin': '*' },
-      body: JSON.stringify({ error: err.message })
-    };
-  }
+    const { uid, database } = await authorizeMember(event, deps);
+    const body = jsonBody(event, 14000);
+    if (!validMessages(body.messages)) return response(400, { error: 'Invalid request' });
+    await enforceRateLimit(database, 'ai', uid, 20, 60 * 60 * 1000, deps.now ? deps.now() : Date.now());
+    return response(503, { error: 'AI is unavailable' });
+  } catch (error) { return fail(error); }
 };
+exports.handler = exports.createHandler();
+exports.validMessages = validMessages;

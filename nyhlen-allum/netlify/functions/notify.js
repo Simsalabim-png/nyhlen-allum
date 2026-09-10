@@ -1,42 +1,36 @@
 const webpush = require('web-push');
+const { authorizeMember, jsonBody, text, response, fail, enforceRateLimit, subscriptionFrom } = require('./lib/security');
 
-webpush.setVapidDetails(
-  'mailto:soahawaii@hotmail.com',
-  'BI_FvflusyLHju44Lig4k4Rlz2vR96lgSeyEHN8grfGxTxPuSHs8o61UsBwKTCNDboUWBITkQN_M4DgbQPn3_d8',
-  process.env.VAPID_PRIVATE_KEY
-);
+function configurePush(client = webpush, env = process.env) {
+  if (!env.VAPID_PRIVATE_KEY) throw new Error('Push is unavailable');
+  client.setVapidDetails('mailto:soahawaii@hotmail.com', 'BI_FvflusyLHju44Lig4k4Rlz2vR96lgSeyEHN8grfGxTxPuSHs8o61UsBwKTCNDboUWBITkQN_M4DgbQPn3_d8', env.VAPID_PRIVATE_KEY);
+  return client;
+}
 
-exports.handler = async function(event) {
-  const headers = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Content-Type',
-    'Content-Type': 'application/json'
-  };
-  if (event.httpMethod === 'OPTIONS') return { statusCode: 200, headers, body: '' };
-
+exports.createHandler = (deps = {}) => async function handler(event) {
+  if (event.httpMethod === 'OPTIONS') return response(204);
+  if (event.httpMethod !== 'POST') return response(405, { error: 'Method not allowed' });
   try {
-    const { tokens, title, body } = JSON.parse(event.body);
-    console.log('Received request - tokens:', tokens ? tokens.length : 0, 'title:', title);
-    if (!tokens || tokens.length === 0) return { statusCode: 200, headers, body: JSON.stringify({ sent: 0 }) };
-
-    const payload = JSON.stringify({ notification: { title, body } });
-    let sent = 0;
-    let errors = [];
-    for (const tokenStr of tokens) {
-      try {
-        const subscription = JSON.parse(tokenStr);
-        await webpush.sendNotification(subscription, payload);
-        sent++;
-        console.log('Sent OK to:', subscription.endpoint.substring(0, 50));
-      } catch(e) { 
-        console.log('Failed:', e.statusCode, e.message); 
-        errors.push(e.message);
+    const { uid, database } = await authorizeMember(event, deps);
+    const body = jsonBody(event, 2048);
+    const title = text(body.title, 120);
+    const message = text(body.body, 500);
+    if (!title || !message) return response(400, { error: 'Invalid notification' });
+    await enforceRateLimit(database, 'notify', uid, 10, 60 * 60 * 1000, deps.now ? deps.now() : Date.now());
+    const devices = (await database.ref('pushDevices').once('value')).val() || {};
+    const client = configurePush(deps.webpush || webpush, deps.env || process.env);
+    const payload = JSON.stringify({ notification: { title, body: message } });
+    let attempted = 0; let sent = 0; let failed = 0;
+    for (const [ownerUid, ownerDevices] of Object.entries(devices)) {
+      if ((await database.ref(`access/${ownerUid}`).once('value')).val() !== true) continue;
+      for (const device of Object.values(ownerDevices || {})) {
+        if (!device || !device.subscription) continue;
+        attempted++;
+        try { await client.sendNotification(subscriptionFrom(device.subscription), payload, { timeout: 10000 }); sent++; }
+        catch (_) { failed++; /* Push providers may reject expired subscriptions; do not expose details. */ }
       }
     }
-    console.log('Total sent:', sent, 'errors:', errors.length);
-    return { statusCode: 200, headers, body: JSON.stringify({ sent, errors }) };
-  } catch(err) {
-    console.log('Handler error:', err.message);
-    return { statusCode: 500, headers, body: JSON.stringify({ error: err.message }) };
-  }
+    return response(attempted > 0 && sent === 0 ? 502 : 200, { sent, failed });
+  } catch (error) { return fail(error); }
 };
+exports.handler = exports.createHandler();

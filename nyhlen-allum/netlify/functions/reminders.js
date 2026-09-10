@@ -1,98 +1,97 @@
-// Kjøres automatisk hvert 5. minutt (schedule i netlify.toml).
-// Sjekker alle hendelser med påminnelse og sender push til deltakernes enheter.
+// Netlify Scheduled Functions cannot be invoked by a production URL. The schedule in netlify.toml is the guard.
 const webpush = require('web-push');
+const { getAdmin, subscriptionFrom } = require('./lib/security');
 
-const DB = 'https://nyhlen-allum-default-rtdb.europe-west1.firebasedatabase.app';
 const TZ = 'Europe/Stockholm';
-const WINDOW_MS = 15 * 60 * 1000; // send hvis påminnelsestidspunktet var innenfor siste 15 min
+const WINDOW_MS = 15 * 60 * 1000;
+const CLAIM_LEASE_MS = 10 * 60 * 1000;
+const REM_TEXT = { 5: 'Om 5 minutter', 60: 'Om 1 time', 120: 'Om 2 timer', 1440: 'I morgen' };
+const VALID_REPEATS = new Set(['ingen', 'daglig', 'ukentlig', 'manedlig', 'arlig']);
+const VALID_REMINDERS = new Set([5, 60, 120, 1440]);
 
-webpush.setVapidDetails(
-  'mailto:soahawaii@hotmail.com',
-  'BI_FvflusyLHju44Lig4k4Rlz2vR96lgSeyEHN8grfGxTxPuSHs8o61UsBwKTCNDboUWBITkQN_M4DgbQPn3_d8',
-  process.env.VAPID_PRIVATE_KEY
-);
+function validDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value || '')) return false;
+  const [year, month, day] = value.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+}
+function validTime(value) { return /^([01]\d|2[0-3]):[0-5]\d$/.test(value || ''); }
+function validEvent(event) {
+  return Boolean(event && typeof event === 'object' && typeof event.title === 'string' && event.title.trim() && event.title.length <= 120 && validDate(event.date) && validTime(event.start) && VALID_REPEATS.has(event.repeat || 'ingen') && VALID_REMINDERS.has(Number(event.reminder)) && Array.isArray(event.members) && event.members.every((member) => typeof member === 'string' && member.length > 0 && member.length <= 80));
+}
 
-// Epoch (ms) for "YYYY-MM-DD" + "HH:MM" i svensk/norsk tid
 function localEpoch(dateStr, timeStr) {
   const [y, m, d] = dateStr.split('-').map(Number);
   const [hh, mm] = (timeStr || '09:00').split(':').map(Number);
   const guess = Date.UTC(y, m - 1, d, hh, mm);
-  const part = new Intl.DateTimeFormat('sv-SE', { timeZone: TZ, timeZoneName: 'longOffset' })
-    .formatToParts(new Date(guess)).find(p => p.type === 'timeZoneName').value; // "GMT+02:00"
-  const mt = part.match(/([+-])(\d{2}):(\d{2})/);
-  const offMin = mt ? (mt[1] === '-' ? -1 : 1) * (Number(mt[2]) * 60 + Number(mt[3])) : 120;
-  return guess - offMin * 60000;
+  const part = new Intl.DateTimeFormat('sv-SE', { timeZone: TZ, timeZoneName: 'longOffset' }).formatToParts(new Date(guess)).find((value) => value.type === 'timeZoneName').value;
+  const match = part.match(/([+-])(\d{2}):(\d{2})/);
+  const offset = match ? (match[1] === '-' ? -1 : 1) * (Number(match[2]) * 60 + Number(match[3])) : 120;
+  return guess - offset * 60000;
 }
-
-function addDays(dateStr, n) {
-  const [y, m, d] = dateStr.split('-').map(Number);
-  const dt = new Date(Date.UTC(y, m - 1, d + n));
-  return dt.toISOString().slice(0, 10);
-}
-function addMonths(dateStr, n) {
-  const [y, m, d] = dateStr.split('-').map(Number);
-  const dt = new Date(Date.UTC(y, m - 1 + n, 1));
-  const last = new Date(Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth() + 1, 0)).getUTCDate();
-  dt.setUTCDate(Math.min(d, last));
-  return dt.toISOString().slice(0, 10);
-}
-
-// Neste forekomst (dato-streng) hvis starttidspunkt >= fra-tidspunkt.
-// Regner alltid fra original startdato (i-te forekomst) så f.eks. "31. hver måned" ikke skrumper etter februar.
-function nextOccurrence(ev, fromMs) {
-  if (!ev.date) return null;
-  const nth = { daglig: i => addDays(ev.date, i), ukentlig: i => addDays(ev.date, i * 7), manedlig: i => addMonths(ev.date, i), arlig: i => addMonths(ev.date, i * 12) }[ev.repeat];
-  for (let i = 0; i < 2000; i++) {
-    const d = nth ? nth(i) : (i === 0 ? ev.date : null);
-    if (!d) return null; // engangs-hendelse som allerede har vært
-    if (localEpoch(d, ev.start) >= fromMs) return d;
-  }
+function addDays(dateStr, days) { const [y, m, d] = dateStr.split('-').map(Number); return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10); }
+function addMonths(dateStr, months) { const [y, m, d] = dateStr.split('-').map(Number); const date = new Date(Date.UTC(y, m - 1 + months, 1)); const last = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0)).getUTCDate(); date.setUTCDate(Math.min(d, last)); return date.toISOString().slice(0, 10); }
+function nextOccurrence(event, fromMs) {
+  if (!validEvent(event)) return null;
+  const repeat = { daglig: (i) => addDays(event.date, i), ukentlig: (i) => addDays(event.date, i * 7), manedlig: (i) => addMonths(event.date, i), arlig: (i) => addMonths(event.date, i * 12) }[event.repeat || 'ingen'];
+  for (let i = 0; i < 2000; i++) { const date = repeat ? repeat(i) : (i === 0 ? event.date : null); if (!date) return null; if (localEpoch(date, event.start) >= fromMs) return date; }
   return null;
 }
+function configurePush(client, env) {
+  if (!env.VAPID_PRIVATE_KEY) throw new Error('Push is unavailable');
+  client.setVapidDetails('mailto:soahawaii@hotmail.com', 'BI_FvflusyLHju44Lig4k4Rlz2vR96lgSeyEHN8grfGxTxPuSHs8o61UsBwKTCNDboUWBITkQN_M4DgbQPn3_d8', env.VAPID_PRIVATE_KEY);
+}
+async function acquireClaim(ref, now) {
+  const result = await ref.transaction((current) => {
+    if (current && current.status === 'sent') return;
+    if (current && current.status === 'processing' && now - Number(current.claimedAt || 0) < CLAIM_LEASE_MS) return;
+    return { status: 'processing', claimedAt: now };
+  });
+  return result.committed;
+}
 
-const REM_TEXT = { 5: 'Om 5 minutter', 60: 'Om 1 time', 120: 'Om 2 timer', 1440: 'I morgen' };
-
-exports.handler = async function () {
-  // Sikring: kjør bare på siten som faktisk har varselnøkkelen (hindrer at en kopi-site markerer påminnelser som sendt uten å kunne sende dem)
-  if (!process.env.VAPID_PRIVATE_KEY) { console.log('Ingen VAPID_PRIVATE_KEY – hopper over.'); return { statusCode: 200, body: 'skipped' }; }
-  const now = Date.now();
-  const [events, tokens, membersNode] = await Promise.all([
-    fetch(DB + '/events.json').then(r => r.json()),
-    fetch(DB + '/pushTokens.json').then(r => r.json()),
-    fetch(DB + '/members.json').then(r => r.json()).catch(() => null)
-  ]);
-  const totalMembers = membersNode ? Object.keys(membersNode).length : 4;
-  const devices = Object.values(tokens || {}).filter(t => t && t.token);
-  let checked = 0, sent = 0;
-
-  for (const [id, ev] of Object.entries(events || {})) {
-    const remMin = Number(ev.reminder) || 0;
-    if (!remMin) continue;
-    checked++;
-    const occ = nextOccurrence(ev, now - WINDOW_MS);
-    if (!occ) continue;
-    const startMs = localEpoch(occ, ev.start);
-    const remAt = startMs - remMin * 60000;
-    if (now < remAt || now - remAt > WINDOW_MS) continue;      // ikke tid ennå / for gammelt
-    if (ev.remindedFor === occ) continue;                       // allerede sendt for denne forekomsten
-
-    // Marker som sendt FØR utsending (unngå dobbelt ved parallelle kjøringer)
-    await fetch(DB + '/events/' + id + '.json', { method: 'PATCH', body: JSON.stringify({ remindedFor: occ }) });
-
-    const members = Array.isArray(ev.members) ? ev.members : [];
-    const targets = devices.filter(t => !t.member || t.member === 'Felles' || members.includes(t.member));
-    const when = REM_TEXT[remMin] || 'Snart';
-    const time = ev.start ? ' kl. ' + ev.start : '';
-    const payload = JSON.stringify({ notification: {
-      title: '⏰ Påminnelse',
-      body: `${when}: ${ev.title}${time}` + (members.length && members.length < totalMembers ? ` (${members.join(', ')})` : '')
-    }});
-    for (const t of targets) {
-      try { await webpush.sendNotification(JSON.parse(t.token), payload); sent++; }
-      catch (e) { console.log('Reminder send failed:', e.statusCode, e.message); }
+exports.createHandler = (deps = {}) => async function handler() {
+  const env = deps.env || process.env;
+  if (!env.VAPID_PRIVATE_KEY) return { statusCode: 200, body: JSON.stringify({ checked: 0, sent: 0 }) };
+  try {
+    const sdk = deps.sdk || require('firebase-admin');
+    const app = deps.app || getAdmin(env, sdk);
+    const database = deps.database || sdk.database(app);
+    const client = deps.webpush || webpush;
+    configurePush(client, env);
+    const now = deps.now ? deps.now() : Date.now();
+    const [eventsSnapshot, devicesSnapshot] = await Promise.all([database.ref('events').once('value'), database.ref('pushDevices').once('value')]);
+    const events = eventsSnapshot.val() && typeof eventsSnapshot.val() === 'object' ? eventsSnapshot.val() : {};
+    const devices = devicesSnapshot.val() && typeof devicesSnapshot.val() === 'object' ? devicesSnapshot.val() : {};
+    let checked = 0; let sent = 0;
+    for (const [eventId, event] of Object.entries(events)) {
+      if (!validEvent(event)) continue;
+      const reminderMinutes = Number(event.reminder) || 0;
+      if (!VALID_REMINDERS.has(reminderMinutes)) continue;
+      checked++;
+      const occurrence = nextOccurrence(event, now - WINDOW_MS);
+      if (!occurrence) continue;
+      const reminderAt = localEpoch(occurrence, event.start) - reminderMinutes * 60000;
+      if (now < reminderAt || now - reminderAt > WINDOW_MS) continue;
+      const members = Array.isArray(event.members) ? event.members : [];
+      const notification = JSON.stringify({ notification: { title: '⏰ Påminnelse', body: `${REM_TEXT[reminderMinutes] || 'Snart'}: ${String(event.title || '').slice(0, 120)}${event.start ? ` kl. ${event.start}` : ''}` } });
+      for (const [uid, ownerDevices] of Object.entries(devices)) {
+        if ((await database.ref(`access/${uid}`).once('value')).val() !== true) continue;
+        for (const [deviceId, device] of Object.entries(ownerDevices || {})) {
+          if (!device || !device.subscription || (device.member && device.member !== 'Felles' && !members.includes(device.member))) continue;
+          let subscription; try { subscription = subscriptionFrom(device.subscription); } catch (_) { continue; }
+          const claim = database.ref(`reminderClaims/${eventId}/${occurrence}/${uid}/${deviceId}`);
+          if (!(await acquireClaim(claim, now))) continue;
+          // A provider success followed by a database failure is intentionally retried: delivery is at-least-once, never silently lost.
+          try { await client.sendNotification(subscription, notification, { timeout: 10000 }); await claim.set({ status: 'sent', sentAt: now }); sent++; }
+          catch (_) { await claim.remove(); }
+        }
+      }
     }
-    console.log('Reminder sent for', ev.title, occ, '→', targets.length, 'devices');
-  }
-  console.log('Reminders run: checked', checked, 'sent', sent);
-  return { statusCode: 200, body: JSON.stringify({ checked, sent }) };
+    return { statusCode: 200, body: JSON.stringify({ checked, sent }) };
+  } catch (_) { return { statusCode: 500, body: JSON.stringify({ error: 'Reminder run failed' }) }; }
 };
+exports.handler = exports.createHandler();
+exports.localEpoch = localEpoch;
+exports.nextOccurrence = nextOccurrence;
+exports.validEvent = validEvent;
