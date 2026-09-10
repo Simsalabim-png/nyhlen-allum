@@ -1,0 +1,12 @@
+[hidden] { display: none !important; }
+#familyLogin { min-height: 100dvh; display: grid; place-items: center; padding: 24px; box-sizing: border-box; background: #f3f2f8; color: #232033; font-family: system-ui, sans-serif; }
+.family-login-card { width: min(100%, 390px); background: white; border: 1px solid #dedbe9; border-radius: 22px; padding: 28px; box-sizing: border-box; box-shadow: 0 12px 45px #24203a0d; }
+.family-login-card h1 { font-size: 25px; margin: 0 0 10px; }
+.family-login-card p { line-height: 1.5; font-size: 15px; }
+#familyLoginForm label { display: block; margin: 17px 0 6px; font-size: 15px; }
+#familyLoginForm input { width: 100%; box-sizing: border-box; padding: 12px; border: 1px solid #aaa4bf; border-radius: 10px; font-size: 16px; }
+#familyLoginForm button, #familyLogout { border: 0; border-radius: 10px; background: #534ab7; color: white; font-size: 15px; padding: 12px 18px; cursor: pointer; }
+#familyLoginForm button { margin-top: 22px; width: 100%; }
+#familyLoginForm button:disabled { opacity: .6; }
+#familyLogout { position: fixed; bottom: 8px; right: 8px; z-index: 1300; font-size: 12px; padding: 8px 12px; }
+#familyLoginStatus { min-height: 44px; }

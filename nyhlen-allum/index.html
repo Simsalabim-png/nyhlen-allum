@@ -153,8 +153,23 @@
   .day-header h2{font-size:22px;font-weight:600;}
   .day-scroll{overflow-y:auto;max-height:calc(100vh - 240px);}
 </style>
+<link rel="stylesheet" href="/family-access.css">
 </head>
 <body>
+<section id="familyLogin" aria-label="Innlogging">
+  <div class="family-login-card">
+    <h1>Nyhlen Allum</h1>
+    <p>Familiekalender, lister og påminnelser.</p>
+    <p id="familyLoginStatus" role="status">Kobler til sikker innlogging … Hvis dette tar lang tid, kontroller nettilkoblingen og last siden på nytt.</p>
+    <form id="familyLoginForm">
+      <label for="familyEmail">E-post</label><input id="familyEmail" name="email" type="email" autocomplete="username" required>
+      <label for="familyPassword">Passord</label><input id="familyPassword" name="password" type="password" autocomplete="current-password" required>
+      <button type="submit">Logg inn</button>
+    </form>
+  </div>
+</section>
+<button id="familyLogout" type="button" hidden>Logg ut</button>
+<div id="familyApp" hidden inert>
 <div class="notif-banner" id="notifBanner">Lagret!</div>
 
 <div class="header">
@@ -167,7 +182,6 @@
     <div style="display:flex;align-items:center;gap:8px">
       <span id="syncStatus"><span class="sync-dot syncing"></span></span>
       <button class="add-btn" onclick="velgEnhet()" title="Min enhet og tekststørrelse" style="background:var(--surface2);font-size:16px;">⚙️</button>
-      <button class="add-btn" id="micBtn" onclick="toggleVoice()" title="Snakk til appen" style="background:var(--surface2);font-size:18px;">🎤</button>
       <button class="add-btn" onclick="openAddModal()" id="addBtnMain">+</button>
     </div>
   </div>
@@ -222,8 +236,9 @@
 </div>
 
 <script type="module">
+import { createFamilyAccess } from "./family-access.js";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getDatabase, ref, onValue, push, update, remove } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+import { getDatabase, ref, push, update, remove } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDHdR4uSVUEPV7fdPwvANc1xYiTX3oV8nQ",
@@ -236,33 +251,48 @@ const firebaseConfig = {
 };
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
+const familyAccess = createFamilyAccess(app, db, {
+  onOpen: () => {
+    checkPushStatus();
+    if (!localStorage.getItem('deviceMember')) window.velgEnhet();
+  },
+  onClose: () => {
+    events = {}; todoItems = {}; shopItems = {}; MEMBERS = {}; MEMBER_ORDER = [];
+    activeMembers = new Set(); selectedMembersForm = new Set(); editingId = null;
+    document.getElementById('deviceModal')?.remove();
+    document.getElementById('pushBanner')?.remove();
+    document.getElementById('memberBar')?.replaceChildren();
+    document.getElementById('memberSelWrap')?.replaceChildren();
+    document.querySelectorAll('.modal-overlay').forEach(el => el.classList.remove('open'));
+    render();
+  }
+});
+const onValue = familyAccess.listen;
+
 const eventsRef = ref(db, 'events');
 const todoRef   = ref(db, 'todo');
 const shopRef   = ref(db, 'shopping');
 const membersRef = ref(db, 'members');
-const tokensRef = ref(db, 'pushTokens');
+
 
 // ---- PUSH NOTIFICATIONS ----
 const VAPID_KEY = 'BI_FvflusyLHju44Lig4k4Rlz2vR96lgSeyEHN8grfGxTxPuSHs8o61UsBwKTCNDboUWBITkQN_M4DgbQPn3_d8';
 
 async function registerPush() {
+  if (!familyAccess.allowed) return;
   try {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
     const reg = await navigator.serviceWorker.register('/sw.js');
     const permission = await Notification.requestPermission();
-    if (permission !== 'granted') return;
+    if (permission !== 'granted') { showNotif('Varsler er ikke tillatt i nettleseren. Du kan endre dette i nettleserinnstillingene.'); return; }
     const sub = await reg.pushManager.subscribe({
       userVisibleOnly: true,
       applicationServerKey: urlBase64ToUint8Array(VAPID_KEY)
     });
-    // Store token in Firebase using endpoint hash as key (avoids duplicates)
-    const token = JSON.stringify(sub);
-    const endpoint = sub.endpoint || '';
-    const key = 'dev_' + endpoint.split('/').pop().substring(0, 40).replace(/[^a-zA-Z0-9]/g, '');
     const member = localStorage.getItem('deviceMember') || '';
-    await update(ref(db, 'pushTokens/' + key), { token, ua: navigator.userAgent.substring(0,50), ts: Date.now(), member });
-    console.log('Push registered with key:', key);
-  } catch(e) { console.log('Push registration failed:', e.message); }
+    await familyAccess.api('register-device', { subscription: sub.toJSON(), member });
+    showNotif('Varsler er aktivert for denne enheten.');
+  } catch(e) { showNotif('Varsler ble ikke aktivert: ' + e.message); }
 }
 
 function urlBase64ToUint8Array(base64String) {
@@ -276,21 +306,15 @@ function urlBase64ToUint8Array(base64String) {
 
 async function sendNotification(title, body) {
   try {
-    const snap = await new Promise(resolve => {
-      const unsub = onValue(tokensRef, s => { unsub(); resolve(s); });
-    });
-    const tokenData = snap.val() || {};
-    const tokens = Object.values(tokenData).map(t => t.token).filter(Boolean);
-    if (tokens.length === 0) return;
-    await fetch('/.netlify/functions/notify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tokens, title, body })
-    });
-  } catch(e) { console.log('Notification failed:', e.message); }
+    const response = await familyAccess.api('notify', { title, body });
+    const result = await response.json();
+    if (!result.sent) showNotif('Lagret. Ingen aktive varslingsenheter er registrert ennå.');
+    else if (result.failed) showNotif('Lagret. Varselet nådde ikke alle enhetene.');
+  } catch (e) { showNotif('Lagret, men varselet kunne ikke sendes: ' + e.message); }
 }
 
 async function checkPushStatus() {
+  if (!familyAccess.allowed) return;
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
   
   if (Notification.permission === 'granted') {
@@ -305,12 +329,11 @@ async function checkPushStatus() {
     banner.onclick = async () => {
       banner.remove();
       await registerPush();
-      showNotif('Varsler aktivert! 🔔');
     };
     document.body.appendChild(banner);
   }
 }
-setTimeout(checkPushStatus, 3000);
+
 
 // ---- DEVICE IDENTITY + TEKSTSTØRRELSE ----
 const TEXT_SIZES = [['0.85','Liten'],['1','Normal'],['1.2','Stor'],['1.4','Ekstra stor']];
@@ -336,7 +359,8 @@ window.velgEnhet = function() {
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:1200;display:flex;align-items:center;justify-content:center;padding:24px';
   const btns = Object.keys(cols).map(n => {
     const sel = current === n;
-    return `<button style="display:block;width:100%;margin:8px 0;padding:13px;border-radius:14px;border:2px solid ${cols[n]};background:${sel ? cols[n] : 'none'};color:${sel ? 'white' : cols[n]};font-size:17px;font-weight:600;cursor:pointer" onclick="setDeviceMember('${n}')">${n}${sel ? ' ✓' : ''}</button>`;
+    const color=safeColor(cols[n]);
+    return `<button style="display:block;width:100%;margin:8px 0;padding:13px;border-radius:14px;border:2px solid ${color};background:${sel ? color : 'none'};color:${sel ? 'white' : color};font-size:17px;font-weight:600;cursor:pointer" onclick="setDeviceMember(${jsArg(n)})">${escapeHtml(n)}${sel ? ' ✓' : ''}</button>`;
   }).join('');
   const sizeBtns = TEXT_SIZES.map(([z, label]) =>
     `<button data-z="${z}" style="flex:1;padding:10px 4px;border-radius:12px;border:1.5px solid var(--border,#999);background:${curZoom === z ? 'var(--today,#534AB7)' : 'none'};color:${curZoom === z ? 'white' : 'inherit'};font-size:${13 * Math.max(1, Number(z))}px;cursor:pointer" onclick="setTextZoom('${z}')">${label}</button>`).join('');
@@ -350,11 +374,11 @@ window.velgEnhet = function() {
     <div style="font-size:15px;font-weight:700;margin:18px 0 4px">Familiemedlemmer</div>
     <div style="font-size:12px;opacity:0.65;margin-bottom:6px">Trykk på fargen for å bytte farge, på navnet for å endre det.</div>
     ${MEMBER_ORDER.map(n => renamingMember === n
-      ? `<div style="display:flex;gap:6px;margin:6px 0"><input id="memberRenameInput" value="${n}" style="flex:1;min-width:0;padding:9px;border-radius:10px;border:1.5px solid var(--border,#999);background:none;color:inherit;font-size:15px"><button onclick="doRenameMember('${n}')" style="padding:9px 14px;border-radius:10px;border:none;background:var(--today,#534AB7);color:white;font-weight:700;cursor:pointer">✓</button></div>`
+      ? `<div style="display:flex;gap:6px;margin:6px 0"><input id="memberRenameInput" value="${escapeHtml(n)}" style="flex:1;min-width:0;padding:9px;border-radius:10px;border:1.5px solid var(--border,#999);background:none;color:inherit;font-size:15px"><button onclick="doRenameMember(${jsArg(n)})" style="padding:9px 14px;border-radius:10px;border:none;background:var(--today,#534AB7);color:white;font-weight:700;cursor:pointer">✓</button></div>`
       : `<div style="display:flex;align-items:center;gap:10px;margin:6px 0">
-          <span onclick="cycleMemberColor('${n}')" title="Bytt farge" style="width:22px;height:22px;border-radius:50%;background:${MEMBERS[n]};cursor:pointer;flex:none"></span>
-          <span onclick="startRenameMember('${n}')" style="flex:1;cursor:pointer;font-size:15px">${n}</span>
-          <button onclick="askRemoveMember('${n}',this)" style="border:none;background:none;color:#E24B4A;cursor:pointer;font-size:14px">Fjern</button>
+          <span onclick="cycleMemberColor(${jsArg(n)})" title="Bytt farge" style="width:22px;height:22px;border-radius:50%;background:${safeColor(MEMBERS[n])};cursor:pointer;flex:none"></span>
+          <span onclick="startRenameMember(${jsArg(n)})" style="flex:1;cursor:pointer;font-size:15px">${escapeHtml(n)}</span>
+          <button onclick="askRemoveMember(${jsArg(n)},this)" style="border:none;background:none;color:#E24B4A;cursor:pointer;font-size:14px">Fjern</button>
         </div>`).join('')}
     <div style="display:flex;gap:6px;margin-top:8px">
       <input id="newMemberName" placeholder="Nytt navn..." style="flex:1;min-width:0;padding:9px;border-radius:10px;border:1.5px solid var(--border,#999);background:none;color:inherit;font-size:15px" onkeydown="if(event.key==='Enter')addMember()">
@@ -371,7 +395,7 @@ window.setDeviceMember = async function(name) {
   showNotif('Enhet satt til: ' + name + ' ✓');
   if (Notification.permission === 'granted') await registerPush();
 };
-setTimeout(() => { if (!localStorage.getItem('deviceMember')) window.velgEnhet(); }, 4500);
+
 
 const DEFAULT_MEMBERS = { Simen:'#378ADD', Linda:'#D4537E', Alma:'#1D9E75', Vilma:'#EF9F27' };
 const MEMBER_PALETTE = ['#378ADD','#D4537E','#1D9E75','#EF9F27','#7F77DD','#D97742','#3AA7B8','#A85CA0'];
@@ -379,6 +403,20 @@ let MEMBERS = { ...DEFAULT_MEMBERS };
 let MEMBER_ORDER = Object.keys(DEFAULT_MEMBERS);
 const DAYS_NO = ['man','tir','ons','tor','fre','lør','søn'];
 const MONTHS_NO = ['januar','februar','mars','april','mai','juni','juli','august','september','oktober','november','desember'];
+// Existing database values are untrusted: this database was previously public.
+const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+const jsArg = value => escapeHtml(JSON.stringify(String(value ?? '')));
+const safeColor = value => /^#[0-9a-f]{6}$/i.test(String(value ?? '')) ? String(value) : '#888888';
+const safeMembers = value => Array.isArray(value) ? value.filter(name => MEMBER_ORDER.includes(name)) : [];
+const validDate = value => /^\d{4}-\d{2}-\d{2}$/.test(String(value ?? ''));
+const validTime = value => value === '' || /^([01]\d|2[0-3]):[0-5]\d$/.test(String(value ?? ''));
+const validRepeats = new Set(['ingen','daglig','ukentlig','manedlig','arlig']);
+const validReminders = new Set([0,5,60,120,1440]);
+function normaliseEvent(value) {
+  const data = value && typeof value === 'object' ? value : {};
+  return {title:String(data.title ?? ''),date:validDate(data.date)?String(data.date):today(),endDate:validDate(data.endDate)?String(data.endDate):'',start:validTime(String(data.start ?? ''))?String(data.start ?? ''):'',end:validTime(String(data.end ?? ''))?String(data.end ?? ''):'',members:safeMembers(data.members),repeat:validRepeats.has(data.repeat)?data.repeat:'ingen',reminder:validReminders.has(Number(data.reminder))?Number(data.reminder):0,notes:String(data.notes ?? '')};
+}
+
 
 let currentView = 'maned';
 let currentDate = new Date();
@@ -406,7 +444,7 @@ onValue(membersRef, snap => {
     return;
   }
   MEMBER_ORDER = Object.keys(val).sort((a,b)=>((val[a]?.order ?? 99)-(val[b]?.order ?? 99)));
-  MEMBERS = Object.fromEntries(MEMBER_ORDER.map(n=>[n,(val[n]&&val[n].color)||'#888888']));
+  MEMBERS = Object.fromEntries(MEMBER_ORDER.map(n=>[n,safeColor(val[n]&&val[n].color)]));
   activeMembers = new Set([...activeMembers].filter(n=>MEMBERS[n]));
   if (activeMembers.size===0) activeMembers = new Set(MEMBER_ORDER);
   selectedMembersForm = new Set([...selectedMembersForm].filter(n=>MEMBERS[n]));
@@ -416,11 +454,11 @@ onValue(membersRef, snap => {
 });
 function renderMemberBar(){
   const bar = document.getElementById('memberBar');
-  if (bar) bar.innerHTML = MEMBER_ORDER.map(n=>`<div class="member-chip${activeMembers.has(n)?'':' inactive'}" style="color:${MEMBERS[n]};border-color:${MEMBERS[n]}" data-member="${n}" onclick="toggleMember('${n}')">${n}</div>`).join('');
+  if (bar) bar.innerHTML = MEMBER_ORDER.map(n=>`<div class="member-chip${activeMembers.has(n)?'':' inactive'}" style="color:${safeColor(MEMBERS[n])};border-color:${safeColor(MEMBERS[n])}" data-member="${escapeHtml(n)}" onclick="toggleMember(${jsArg(n)})">${escapeHtml(n)}</div>`).join('');
 }
 function renderMemberFormButtons(){
   const wrap = document.getElementById('memberSelWrap');
-  if (wrap) { wrap.innerHTML = MEMBER_ORDER.map(n=>`<button class="member-sel-btn" style="color:${MEMBERS[n]};border-color:${MEMBERS[n]}" data-m="${n}" onclick="toggleMemberSel(this,'${n}')">${n}</button>`).join(''); updateMemberFormUI(); }
+  if (wrap) { wrap.innerHTML = MEMBER_ORDER.map(n=>`<button class="member-sel-btn" style="color:${safeColor(MEMBERS[n])};border-color:${safeColor(MEMBERS[n])}" data-m="${escapeHtml(n)}" onclick="toggleMemberSel(this,${jsArg(n)})">${escapeHtml(n)}</button>`).join(''); updateMemberFormUI(); }
 }
 function cleanMemberName(s){ return (s||'').trim().replace(/[.#$/\[\]]/g,'').substring(0,20); }
 window.addMember = async function(){
@@ -454,9 +492,7 @@ window.doRenameMember = async function(oldN){
   for (const [id,ev] of Object.entries(events)) if (Array.isArray(ev.members)&&ev.members.includes(oldN)) await update(ref(db,'events/'+id), {members: ev.members.map(x=>x===oldN?n:x)});
   for (const [id,it] of Object.entries(todoItems)) if (it.member===oldN) await update(ref(db,'todo/'+id), {member:n});
   for (const [id,it] of Object.entries(shopItems)) if (it.member===oldN) await update(ref(db,'shopping/'+id), {member:n});
-  const tsnap = await new Promise(res=>{const u=onValue(tokensRef,s=>{u();res(s);});});
-  for (const [k,t] of Object.entries(tsnap.val()||{})) if (t.member===oldN) await update(ref(db,'pushTokens/'+k), {member:n});
-  if (localStorage.getItem('deviceMember')===oldN) localStorage.setItem('deviceMember', n);
+  if (localStorage.getItem('deviceMember')===oldN) { localStorage.setItem('deviceMember', n); await registerPush(); }
   await remove(ref(db,'members/'+oldN));
   showNotif(oldN+' heter nå '+n+' ✓');
 };
@@ -552,18 +588,18 @@ function renderLists() {
   const complete   = Object.entries(items).filter(([,i])=>i.done);
   let itemsHtml = '';
   [...incomplete, ...complete].forEach(([id, item]) => {
-    const memberColor = MEMBERS[item.member]||'';
-    const memberTag = item.member ? `<span class="list-member-tag" style="background:${memberColor}">${item.member}</span>` : '';
+    const memberColor = safeColor(MEMBERS[item.member]);
+    const memberTag = MEMBER_ORDER.includes(item.member) ? `<span class="list-member-tag" style="background:${memberColor}">${escapeHtml(item.member)}</span>` : '';
     itemsHtml += `<div class="list-item">
-      <div class="list-check${item.done?' done':''}" onclick="toggleListItem('${id}',${!item.done})">${item.done?'✓':''}</div>
-      <div class="list-item-text${item.done?' done':''}">${item.text}</div>
+      <div class="list-check${item.done?' done':''}" onclick="toggleListItem(${jsArg(id)},${Boolean(!item.done)})">${item.done?'✓':''}</div>
+      <div class="list-item-text${item.done?' done':''}">${escapeHtml(item.text)}</div>
       ${memberTag}
-      <button class="list-item-del" onclick="deleteListItem('${id}')">×</button>
+      <button class="list-item-del" onclick="deleteListItem(${jsArg(id)})">×</button>
     </div>`;
   });
   if(!itemsHtml) itemsHtml = `<div class="list-empty">${activeList==='todo'?'Ingen gjøremål 🎉':'Handlelisten er tom 🛒'}</div>`;
 
-  const memberOpts = Object.keys(MEMBERS).map(m=>`<option value="${m}">${m}</option>`).join('');
+  const memberOpts = Object.keys(MEMBERS).map(m=>`<option value="${escapeHtml(m)}">${escapeHtml(m)}</option>`).join('');
 
   return `<div class="lists-view">
     <div class="list-tabs">
@@ -620,7 +656,7 @@ function today() { const t=new Date(); return fmt(t.getFullYear(),t.getMonth(),t
 
 function getVisibleEvents(dateStr) {
   return Object.entries(events).filter(([id,ev]) => {
-    if(!ev.members||!ev.members.some(m=>activeMembers.has(m))) return false;
+    ev=normaliseEvent(ev); if(!ev.members.some(m=>activeMembers.has(m))) return false;
     const evDate=new Date(ev.date+'T12:00:00'), checkDate=new Date(dateStr+'T12:00:00');
     if(ev.endDate&&ev.repeat==='ingen') { const end=new Date(ev.endDate+'T12:00:00'); return checkDate>=evDate&&checkDate<=end; }
     if(ev.repeat==='ingen') return ev.date===dateStr;
@@ -630,7 +666,7 @@ function getVisibleEvents(dateStr) {
     if(ev.repeat==='manedlig') return evDate.getDate()===checkDate.getDate();
     if(ev.repeat==='arlig') return evDate.getDate()===checkDate.getDate()&&evDate.getMonth()===checkDate.getMonth();
     return false;
-  }).map(([id,ev])=>({...ev,id})).sort((a,b)=>(a.start||'').localeCompare(b.start||''));
+  }).map(([id,ev])=>({...normaliseEvent(ev),id})).sort((a,b)=>(a.start||'').localeCompare(b.start||''));
 }
 
 window.setView = function(v) {
@@ -700,12 +736,12 @@ function renderMonth() {
   html+='</div>';
   return html;
 }
-function renderDots(evs){if(!evs.length)return '';return '<div class="day-dots">'+evs.slice(0,3).map(e=>`<div class="day-dot" style="background:${MEMBERS[e.members[0]]||'#999'}"></div>`).join('')+'</div>';}
+function renderDots(evs){if(!evs.length)return '';return '<div class="day-dots">'+evs.slice(0,3).map(e=>`<div class="day-dot" style="background:${safeColor(MEMBERS[e.members[0]])}"></div>`).join('')+'</div>';}
 function renderEventItem(ev,dateStr){
-  const col=MEMBERS[ev.members[0]]||'#888', time=ev.start?ev.start+(ev.end?'–'+ev.end:''):'Hele dagen';
-  const tags=ev.members.map(m=>`<span class="event-member-tag" style="background:${MEMBERS[m]}">${m}</span>`).join('');
+  const col=safeColor(MEMBERS[ev.members[0]]), time=ev.start?ev.start+(ev.end?'–'+ev.end:''):'Hele dagen';
+  const tags=ev.members.map(m=>`<span class="event-member-tag" style="background:${safeColor(MEMBERS[m])}">${escapeHtml(m)}</span>`).join('');
   const rep=ev.repeat!=='ingen'?' 🔁':'', multi=ev.endDate?` → ${ev.endDate.split('-').reverse().slice(0,2).join('.')}` :'';
-  return `<div class="event-item" onclick="openDetail('${ev.id}','${dateStr}')"><div class="event-color-bar" style="background:${col}"></div><div class="event-info"><div class="event-title">${ev.title}${rep}</div><div class="event-meta">${time}${multi}</div><div class="event-members">${tags}</div></div></div>`;
+  return `<div class="event-item" onclick="openDetail(${jsArg(ev.id)},${jsArg(dateStr)})"><div class="event-color-bar" style="background:${col}"></div><div class="event-info"><div class="event-title">${escapeHtml(ev.title)}${rep}</div><div class="event-meta">${escapeHtml(time)}${multi}</div><div class="event-members">${tags}</div></div></div>`;
 }
 function renderWeek(){
   const monday=getWeekMonday(currentDate), days=[];
@@ -720,7 +756,7 @@ function renderWeek(){
       getVisibleEvents(ds).filter(ev=>ev.start&&parseInt(ev.start.split(':')[0])===h).forEach(ev=>{
         const sh=parseInt(ev.start.split(':')[0]),sm=parseInt(ev.start.split(':')[1]);
         const eh=ev.end?parseInt(ev.end.split(':')[0]):sh+1,em=ev.end?parseInt(ev.end.split(':')[1]):0;
-        inner+=`<div class="week-event" style="top:${(sm/60)*100}%;height:${Math.max((eh+em/60-sh-sm/60)*48,20)}px;background:${MEMBERS[ev.members[0]]}" onclick="openDetail('${ev.id}','${ds}')">${ev.title}</div>`;
+        inner+=`<div class="week-event" style="top:${(sm/60)*100}%;height:${Math.max((eh+em/60-sh-sm/60)*48,20)}px;background:${safeColor(MEMBERS[ev.members[0]])}" onclick="openDetail(${jsArg(ev.id)},${jsArg(ds)})">${escapeHtml(ev.title)}</div>`;
       });
       html+=`<div class="time-col">${inner}</div>`;
     });
@@ -737,7 +773,7 @@ function renderDay(){
     for(let h=0;h<24;h++){
       const hourEvs=evs.filter(ev=>ev.start&&parseInt(ev.start.split(':')[0])===h);
       html+=`<div style="font-size:11px;color:var(--text2);text-align:right;padding:4px 8px 0 0;height:56px">${h>0?String(h).padStart(2,'0')+':00':''}</div><div style="border-left:0.5px solid var(--border);min-height:56px;padding:4px 8px">`;
-      hourEvs.forEach(ev=>{const col=MEMBERS[ev.members[0]]||'#888';const tags=ev.members.map(m=>`<span style="background:${MEMBERS[m]};color:white;font-size:10px;padding:1px 6px;border-radius:8px;margin-right:3px">${m}</span>`).join('');html+=`<div onclick="openDetail('${ev.id}','${ds}')" style="background:${col}18;border-left:3px solid ${col};padding:6px 8px;border-radius:6px;margin-bottom:4px;cursor:pointer"><div style="font-weight:500;font-size:14px">${ev.title}</div><div style="font-size:12px;color:var(--text2)">${ev.start}${ev.end?'–'+ev.end:''}</div><div style="margin-top:3px">${tags}</div></div>`;});
+      hourEvs.forEach(ev=>{const col=safeColor(MEMBERS[ev.members[0]]);const tags=ev.members.map(m=>`<span style="background:${safeColor(MEMBERS[m])};color:white;font-size:10px;padding:1px 6px;border-radius:8px;margin-right:3px">${escapeHtml(m)}</span>`).join('');html+=`<div onclick="openDetail(${jsArg(ev.id)},${jsArg(ds)})" style="background:${col}18;border-left:3px solid ${col};padding:6px 8px;border-radius:6px;margin-bottom:4px;cursor:pointer"><div style="font-weight:500;font-size:14px">${escapeHtml(ev.title)}</div><div style="font-size:12px;color:var(--text2)">${escapeHtml(ev.start)}${ev.end?'–'+escapeHtml(ev.end):''}</div><div style="margin-top:3px">${tags}</div></div>`;});
       html+='</div>';
     }
     html+='</div></div>';
@@ -790,27 +826,28 @@ window.saveEvent=async function(){
   const date=document.getElementById('evDate').value;if(!date){document.getElementById('evDate').focus();return;}
   setSyncStatus('syncing');
   const endDate=document.getElementById('evEndDate').value;
-  const ev={title,date,endDate:endDate||'',start:document.getElementById('evStart').value||'',end:document.getElementById('evEnd').value||'',members:[...selectedMembersForm],repeat:selectedRepeat,reminder:selectedReminder,remindedFor:'',notes:document.getElementById('evNotes').value.trim(),updatedAt:Date.now()};
+  if(!selectedMembersForm.size){showNotif('Velg minst ett familiemedlem');return;}
+  const ev={title,date,endDate:endDate||'',start:document.getElementById('evStart').value||'',end:document.getElementById('evEnd').value||'',members:[...selectedMembersForm],repeat:selectedRepeat,reminder:selectedReminder,notes:document.getElementById('evNotes').value.trim(),updatedAt:Date.now()};
   try{if(editingId){await update(ref(db,'events/'+editingId),ev);sendNotification('Nyhlen Allum 📅','Hendelse oppdatert: '+ev.title);}else{await push(eventsRef,ev);sendNotification('Nyhlen Allum 📅','Ny hendelse: '+ev.title);}closeAddModal();showNotif(editingId?'Oppdatert!':'Lagret!');}
   catch(e){showNotif('Feil: '+e.message);setSyncStatus('offline');}
 };
 window.deleteEvent=async function(){if(!editingId)return;setSyncStatus('syncing');try{await remove(ref(db,'events/'+editingId));closeAddModal();showNotif('Slettet');}catch(e){setSyncStatus('offline');}};
 window.openDetail=function(id,dateStr){
-  const ev=events[id];if(!ev)return;
-  const col=MEMBERS[ev.members[0]]||'#888',time=ev.start?ev.start+(ev.end?' – '+ev.end:''):'Hele dagen';
+  if(!events[id])return; const ev=normaliseEvent(events[id]);
+  const col=safeColor(MEMBERS[ev.members[0]]),time=ev.start?ev.start+(ev.end?' – '+ev.end:''):'Hele dagen';
   const[y,mo,d]=dateStr.split('-').map(Number),dt=new Date(y,mo-1,d);
   const dateLabel=DAYS_NO[((dt.getDay()+6)%7)]+' '+d+'. '+MONTHS_NO[mo-1]+' '+y;
   const multi=ev.endDate?` → ${ev.endDate.split('-').reverse().join('.')}` :'';
   const rep={ingen:'',daglig:'Daglig',ukentlig:'Ukentlig',manedlig:'Månedlig',arlig:'Årlig'}[ev.repeat];
   const remTxt={5:'5 min før',60:'1 time før',120:'2 timer før',1440:'1 dag før'}[ev.reminder]||'';
-  const tags=ev.members.map(m=>`<span class="event-member-tag" style="background:${MEMBERS[m]}">${m}</span>`).join('');
-  document.getElementById('detailContent').innerHTML=`<div class="modal-handle"></div><div class="detail-color-strip" style="background:${col}"></div><div class="detail-title">${ev.title}</div><div class="detail-row">📅 ${dateLabel}${multi}</div><div class="detail-row">🕐 ${time}</div>${rep?`<div class="detail-row">🔁 ${rep}</div>`:''}${remTxt?`<div class="detail-row">⏰ ${remTxt}</div>`:''}${ev.notes?`<div class="detail-row">📝 ${ev.notes}</div>`:''}<div class="detail-row" style="gap:6px;flex-wrap:wrap">👥 ${tags}</div><button class="save-btn" style="background:#534AB7;margin-top:16px" onclick="editEvent('${id}')">Rediger</button><button class="cancel-btn" onclick="closeDetail()">Lukk</button>`;
+  const tags=ev.members.map(m=>`<span class="event-member-tag" style="background:${safeColor(MEMBERS[m])}">${escapeHtml(m)}</span>`).join('');
+  document.getElementById('detailContent').innerHTML=`<div class="modal-handle"></div><div class="detail-color-strip" style="background:${col}"></div><div class="detail-title">${escapeHtml(ev.title)}</div><div class="detail-row">📅 ${dateLabel}${multi}</div><div class="detail-row">🕐 ${escapeHtml(time)}</div>${rep?`<div class="detail-row">🔁 ${rep}</div>`:''}${remTxt?`<div class="detail-row">⏰ ${remTxt}</div>`:''}${ev.notes?`<div class="detail-row">📝 ${escapeHtml(ev.notes)}</div>`:''}<div class="detail-row" style="gap:6px;flex-wrap:wrap">👥 ${tags}</div><button class="save-btn" style="background:#534AB7;margin-top:16px" onclick="editEvent(${jsArg(id)})">Rediger</button><button class="cancel-btn" onclick="closeDetail()">Lukk</button>`;
   document.getElementById('detailModal').classList.add('open');
 };
 window.closeDetail=function(){document.getElementById('detailModal').classList.remove('open');};
 window.handleDetailOverlay=function(e){if(e.target===document.getElementById('detailModal'))closeDetail();};
 window.editEvent=function(id){
-  const ev=events[id];if(!ev)return;closeDetail();editingId=id;
+  if(!events[id])return;const ev=normaliseEvent(events[id]);closeDetail();editingId=id;
   document.getElementById('modalTitle').textContent='Rediger hendelse';
   document.getElementById('evTitle').value=ev.title;document.getElementById('evDate').value=ev.date;
   document.getElementById('evEndDate').value=ev.endDate||'';
@@ -823,176 +860,10 @@ function getWeekMonday(date){const d=new Date(date),day=d.getDay(),diff=day===0?
 function getWeek(date){const d=new Date(Date.UTC(date.getFullYear(),date.getMonth(),date.getDate()));const dn=d.getUTCDay()||7;d.setUTCDate(d.getUTCDate()+4-dn);const ys=new Date(Date.UTC(d.getUTCFullYear(),0,1));return Math.ceil((((d-ys)/86400000)+1)/7);}
 function showNotif(msg){const b=document.getElementById('notifBanner');b.textContent=msg;b.classList.add('show');setTimeout(()=>b.classList.remove('show'),2200);}
 
-// ---- VOICE ----
-let recognition = null;
-let voiceParsed = null;
-
-window.toggleVoice = function() {
-  const modal = document.getElementById('voiceModal');
-  if (modal.classList.contains('open')) { closeVoice(); return; }
-  openVoice();
-};
-
-window.openVoice = function() {
-  document.getElementById('voiceModal').classList.add('open');
-  document.getElementById('voiceState').textContent = '🎤';
-  document.getElementById('voiceStatus').textContent = 'Trykk for å snakke';
-  document.getElementById('voiceTranscript').textContent = '';
-  document.getElementById('voiceResult').style.display = 'none';
-  document.getElementById('voiceActions').style.display = 'none';
-  voiceParsed = null;
-  startListening();
-};
-
-window.closeVoice = function() {
-  document.getElementById('voiceModal').classList.remove('open');
-  document.getElementById('micBtn').classList.remove('mic-active');
-  if (recognition) { try { recognition.stop(); } catch(e){} }
-};
-
-window.handleVoiceOverlay = function(e) {
-  if (e.target === document.getElementById('voiceModal')) closeVoice();
-};
-
-function startListening() {
-  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SpeechRecognition) {
-    document.getElementById('voiceStatus').textContent = 'Talegjenkjenning støttes ikke i denne nettleseren';
-    return;
-  }
-  recognition = new SpeechRecognition();
-  recognition.lang = 'sv-SE';
-  recognition.continuous = false;
-  recognition.interimResults = true;
-  recognition.maxAlternatives = 1;
-
-  document.getElementById('micBtn').classList.add('mic-active');
-  document.getElementById('voiceState').textContent = '🔴';
-  document.getElementById('voiceStatus').textContent = 'Lytter...';
-
-  recognition.onresult = (event) => {
-    const transcript = event.results[0][0].transcript;
-    document.getElementById('voiceTranscript').textContent = '«' + transcript + '»';
-    if (event.results[0].isFinal) {
-      document.getElementById('micBtn').classList.remove('mic-active');
-      document.getElementById('voiceState').textContent = '🤔';
-      document.getElementById('voiceStatus').textContent = 'Forstår...';
-      parseVoiceCommand(transcript);
-    }
-  };
-  recognition.onerror = (e) => {
-    document.getElementById('voiceState').textContent = '❌';
-    document.getElementById('voiceStatus').textContent = 'Kunne ikke høre deg. Prøv igjen.';
-    document.getElementById('micBtn').classList.remove('mic-active');
-  };
-  recognition.onend = () => { document.getElementById('micBtn').classList.remove('mic-active'); };
-  recognition.start();
-}
-
-async function parseVoiceCommand(text) {
-  const today = new Date();
-  const todayISO = today.toISOString().split('T')[0];
-  const prompt = `Du er en smart kalenderassistent for familien Nyhlen Allum (${MEMBER_ORDER.join(', ')}).
-Brukeren/användaren sa: "${text}"
-Dagens dato/datum: ${todayISO} (${['søndag/söndag','mandag/måndag','tirsdag/tisdag','onsdag','torsdag/torsdag','fredag','lørdag/lördag'][today.getDay()]})
-Forstå både norsk og svensk input.
-
-Analyser kommandoen og returner KUN et JSON-objekt (ingen forklaring, ingen backticks):
-{
-  "type": "kalender" | "todo" | "handleliste",
-  "summary": "Kort beskrivelse av hva som legges til (på norsk)",
-  "data": {
-    For kalender: { "title": "...", "date": "YYYY-MM-DD", "endDate": "", "start": "HH:MM eller tom", "end": "", "members": ${JSON.stringify(MEMBER_ORDER)}, "repeat": "ingen", "notes": "" }
-    For todo: { "text": "...", "member": "navn eller tom streng" }
-    For handleliste: { "text": "...", "member": "navn eller tom streng" }
-  }
-}
-
-Regler:
-- "i morgen" = ${new Date(today.getTime()+86400000).toISOString().split('T')[0]}
-- "mandag" = nærmeste fremtidige mandag
-- Klokkeslett: "klokken 14" = "14:00", "halv tre" = "14:30"
-- Hvis ingen dato nevnes for kalender, bruk dagens dato
-- members skal alltid være en liste, standard er alle medlemmene
-- Hvis et navn nevnes (f.eks. "${MEMBER_ORDER[0]||'Simen'}"), sett kun det navnet i members/member`;
-
-  try {
-    const res = await fetch('/.netlify/functions/claude', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        messages: [{ role: 'user', content: prompt }]
-      })
-    });
-    const json = await res.json();
-    if (!json.content || !json.content[0] || !json.content[0].text) {
-      throw new Error('Tomt svar fra AI: ' + JSON.stringify(json).substring(0,100));
-    }
-    const raw = json.content[0].text.replace(/```json|```/g,'').trim();
-    voiceParsed = JSON.parse(raw);
-    document.getElementById('voiceState').textContent = voiceParsed.type === 'kalender' ? '📅' : voiceParsed.type === 'todo' ? '✅' : '🛒';
-    document.getElementById('voiceStatus').textContent = 'Forstår jeg riktig?';
-    document.getElementById('voiceResultText').textContent = voiceParsed.summary || JSON.stringify(voiceParsed.data);
-    document.getElementById('voiceResult').style.display = 'block';
-    document.getElementById('voiceActions').style.display = 'block';
-  } catch(e) {
-    document.getElementById('voiceState').textContent = '❌';
-    document.getElementById('voiceStatus').textContent = 'Feil: ' + e.message;
-  }
-}
-
-window.confirmVoice = async function() {
-  if (!voiceParsed) return;
-  try {
-    if (voiceParsed.type === 'kalender') {
-      const d = voiceParsed.data;
-      await push(eventsRef, { ...d, updatedAt: Date.now() });
-      showNotif('Hendelse lagt til! 📅');
-    } else if (voiceParsed.type === 'todo') {
-      await push(todoRef, { text: voiceParsed.data.text || voiceParsed.data.title || '', member: voiceParsed.data.member||'', done: false, createdAt: Date.now() });
-      showNotif('Gjøremål lagt til! ✅');sendNotification('Nyhlen Allum ✅','Nytt gjøremål: '+( voiceParsed.data.text||voiceParsed.data.title||''));
-    } else {
-      await push(shopRef, { text: voiceParsed.data.text || voiceParsed.data.title || '', member: voiceParsed.data.member||'', done: false, createdAt: Date.now() });
-      showNotif('Lagt til handlelisten! 🛒');sendNotification('Nyhlen Allum 🛒','Ny vare: '+(voiceParsed.data.text||voiceParsed.data.title||''));
-    }
-    closeVoice();
-  } catch(e) { showNotif('Feil: ' + e.message); }
-};
-
-window.retryVoice = function() {
-  document.getElementById('voiceResult').style.display = 'none';
-  document.getElementById('voiceActions').style.display = 'none';
-  document.getElementById('voiceTranscript').textContent = '';
-  voiceParsed = null;
-  startListening();
-};
 
 render();
 </script>
 
-<!-- Voice modal -->
-<div class="modal-overlay" id="voiceModal" onclick="handleVoiceOverlay(event)">
-  <div class="modal" style="text-align:center;padding:28px 20px 40px">
-    <div class="modal-handle"></div>
-    <div id="voiceState" style="font-size:48px;margin-bottom:12px">🎤</div>
-    <div id="voiceStatus" style="font-size:16px;font-weight:600;margin-bottom:8px">Si hva du vil gjøre</div>
-    <div id="voiceTranscript" style="font-size:14px;color:var(--text2);min-height:24px;margin-bottom:16px;font-style:italic"></div>
-    <div id="voiceResult" style="background:var(--surface2);border-radius:12px;padding:14px;margin-bottom:16px;display:none;text-align:left">
-      <div style="font-size:12px;color:var(--text2);margin-bottom:6px;text-transform:uppercase;letter-spacing:1px">Forstår jeg riktig?</div>
-      <div id="voiceResultText" style="font-size:15px;font-weight:500"></div>
-    </div>
-    <div id="voiceActions" style="display:none">
-      <button class="save-btn" onclick="confirmVoice()" style="margin-bottom:8px">✅ Ja, legg til</button>
-      <button class="cancel-btn" onclick="retryVoice()">🔄 Prøv igjen</button>
-    </div>
-    <button class="cancel-btn" onclick="closeVoice()" style="margin-top:8px">Avbryt</button>
-    <div style="margin-top:16px;font-size:12px;color:var(--text2)">
-      Eksempler:<br>
-      «Legg melk på handlelisten»<br>
-      «Husk å betale strøm»<br>
-      «Tannlege fredag klokken 14»
-    </div>
-  </div>
 </div>
 </body>
 </html>

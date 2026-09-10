@@ -146,8 +146,23 @@
   .kb-member-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;}
   .kb-member-btn{padding:6px 12px;border-radius:16px;border:1.5px solid;font-size:12px;font-weight:500;cursor:pointer;background:none;}
 </style>
+<link rel="stylesheet" href="/family-access.css">
 </head>
 <body>
+<section id="familyLogin" aria-label="Innlogging">
+  <div class="family-login-card">
+    <h1>Nyhlen Allum</h1>
+    <p>Familiekalender, lister og påminnelser.</p>
+    <p id="familyLoginStatus" role="status">Kobler til sikker innlogging … Hvis dette tar lang tid, kontroller nettilkoblingen og last siden på nytt.</p>
+    <form id="familyLoginForm">
+      <label for="familyEmail">E-post</label><input id="familyEmail" name="email" type="email" autocomplete="username" required>
+      <label for="familyPassword">Passord</label><input id="familyPassword" name="password" type="password" autocomplete="current-password" required>
+      <button type="submit">Logg inn</button>
+    </form>
+  </div>
+</section>
+<button id="familyLogout" type="button" hidden>Logg ut</button>
+<div id="familyApp" hidden inert>
 <div class="layout">
 
   <!-- TOPBAR -->
@@ -159,7 +174,6 @@
     <div class="topbar-right">
       <div class="member-dots" id="memberDots"></div>
       <span class="sync-dot syncing" id="syncDot"></span>
-      <button onclick="openHubVoice()" id="hubMicBtn" style="background:var(--surface2);border:0.5px solid var(--border);color:white;border-radius:50%;width:36px;height:36px;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;">🎤</button>
       <div class="topbar-time" id="tbTime"></div>
     </div>
   </div>
@@ -202,8 +216,9 @@
 </div>
 
 <script type="module">
+import { createFamilyAccess } from "./family-access.js";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getDatabase, ref, onValue, push, update, remove } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+import { getDatabase, ref, push, update, remove } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDHdR4uSVUEPV7fdPwvANc1xYiTX3oV8nQ",
@@ -216,6 +231,17 @@ const firebaseConfig = {
 };
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
+const familyAccess = createFamilyAccess(app, db, {
+  onClose: () => {
+    events = {}; todoItems = {}; shopItems = {}; MEMBERS = {}; MEMBER_ORDER = [];
+    document.getElementById('kbOverlay')?.classList.remove('open');
+    document.getElementById('kbMemberRow').replaceChildren();
+    document.getElementById('memberDots').replaceChildren();
+    renderAll();
+  }
+});
+const onValue = familyAccess.listen;
+
 const eventsRef = ref(db,'events');
 const todoRef   = ref(db,'todo');
 const shopRef   = ref(db,'shopping');
@@ -224,15 +250,28 @@ const DEFAULT_MEMBERS = {Simen:'#378ADD',Linda:'#D4537E',Alma:'#1D9E75',Vilma:'#
 let MEMBERS = {...DEFAULT_MEMBERS};
 let MEMBER_ORDER = Object.keys(DEFAULT_MEMBERS);
 const membersRef = ref(db,'members');
+const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+const jsArg = value => escapeHtml(JSON.stringify(String(value ?? '')));
+const safeColor = value => /^#[0-9a-f]{6}$/i.test(String(value ?? '')) ? String(value) : '#888888';
+const safeMembers = value => Array.isArray(value) ? value.filter(name => MEMBER_ORDER.includes(name)) : [];
+const validDate = value => /^\d{4}-\d{2}-\d{2}$/.test(String(value ?? ''));
+const validTime = value => value === '' || /^([01]\d|2[0-3]):[0-5]\d$/.test(String(value ?? ''));
+const validRepeats = new Set(['ingen','daglig','ukentlig','manedlig','arlig']);
+const validReminders = new Set([0,5,60,120,1440]);
+function normaliseEvent(value) {
+  const data = value && typeof value === 'object' ? value : {};
+  return {title:String(data.title ?? ''),date:validDate(data.date)?String(data.date):todayStr(),endDate:validDate(data.endDate)?String(data.endDate):'',start:validTime(String(data.start ?? ''))?String(data.start ?? ''):'',end:validTime(String(data.end ?? ''))?String(data.end ?? ''):'',members:safeMembers(data.members),repeat:validRepeats.has(data.repeat)?data.repeat:'ingen',reminder:validReminders.has(Number(data.reminder))?Number(data.reminder):0,notes:String(data.notes ?? '')};
+}
+
 function renderMemberDots(){
   const el = document.getElementById('memberDots');
-  if (el) el.innerHTML = MEMBER_ORDER.map(n=>`<div class="member-dot-wrap"><div class="member-dot" style="background:${MEMBERS[n]}"></div><div class="member-dot-label">${n}</div></div>`).join('');
+  if (el) el.innerHTML = MEMBER_ORDER.map(n=>`<div class="member-dot-wrap"><div class="member-dot" style="background:${safeColor(MEMBERS[n])}"></div><div class="member-dot-label">${escapeHtml(n)}</div></div>`).join('');
 }
 onValue(membersRef, snap => {
   const val = snap.val();
   if (!val) { renderMemberDots(); return; } // hovedappen seeder databasen
   MEMBER_ORDER = Object.keys(val).sort((a,b)=>((val[a]?.order ?? 99)-(val[b]?.order ?? 99)));
-  MEMBERS = Object.fromEntries(MEMBER_ORDER.map(n=>[n,(val[n]&&val[n].color)||'#888888']));
+  MEMBERS = Object.fromEntries(MEMBER_ORDER.map(n=>[n,safeColor(val[n]&&val[n].color)]));
   renderMemberDots();
   renderAll();
 });
@@ -266,7 +305,7 @@ function todayStr(){const t=new Date();return fmt(t.getFullYear(),t.getMonth(),t
 
 function getEventsOn(dateStr){
   return Object.entries(events).filter(([id,ev])=>{
-    if(!ev.members)return false;
+    ev=normaliseEvent(ev); if(!ev.members.length)return false;
     const evDate=new Date(ev.date+'T12:00:00'),checkDate=new Date(dateStr+'T12:00:00');
     if(ev.endDate&&ev.repeat==='ingen'){const end=new Date(ev.endDate+'T12:00:00');return checkDate>=evDate&&checkDate<=end;}
     if(ev.repeat==='ingen')return ev.date===dateStr;
@@ -276,7 +315,7 @@ function getEventsOn(dateStr){
     if(ev.repeat==='manedlig')return evDate.getDate()===checkDate.getDate();
     if(ev.repeat==='arlig')return evDate.getDate()===checkDate.getDate()&&evDate.getMonth()===checkDate.getMonth();
     return false;
-  }).map(([id,ev])=>({...ev,id})).sort((a,b)=>(a.start||'').localeCompare(b.start||''));
+  }).map(([id,ev])=>({...normaliseEvent(ev),id})).sort((a,b)=>(a.start||'').localeCompare(b.start||''));
 }
 
 function updateClock(){
@@ -292,7 +331,7 @@ function renderWeekStrip(){
   for(let i=0;i<7;i++){
     const d=new Date(monday);d.setDate(d.getDate()+i);
     const ds=fmt(d.getFullYear(),d.getMonth(),d.getDate()),isT=ds===td,isSel=ds===selStr;
-    const dots=getEventsOn(ds).slice(0,4).map(ev=>`<div class="wsd-dot" style="background:${MEMBERS[ev.members[0]]||'#888'}"></div>`).join('');
+    const dots=getEventsOn(ds).slice(0,4).map(ev=>`<div class="wsd-dot" style="background:${safeColor(MEMBERS[ev.members[0]])}"></div>`).join('');
     html+=`<div class="week-strip-day${isSel?' selected':''}" onclick="selectDay('${ds}')"><div class="wsd-name">${DAYS_NO[i]}</div><div class="wsd-num${isT?' today-num':''}">${d.getDate()}</div><div class="wsd-dots">${dots}</div></div>`;
   }
   document.getElementById('weekStrip').innerHTML=html;
@@ -315,7 +354,7 @@ function renderLeft(){
     const tdStr=todayStr();
     Object.entries(MEMBERS).forEach(([name,color])=>{
       const count=getEventsOn(tdStr).filter(e=>e.members.includes(name)).length;
-      html+=`<div class="legend-item"><div class="legend-bar" style="background:${color}"></div><div><div class="legend-name">${name}</div><div class="legend-count">${count>0?count+' hendelse'+(count>1?'r':''):' Fri i dag'}</div></div></div>`;
+      html+=`<div class="legend-item"><div class="legend-bar" style="background:${safeColor(color)}"></div><div><div class="legend-name">${escapeHtml(name)}</div><div class="legend-count">${count>0?count+' hendelse'+(count>1?'r':''):' Fri i dag'}</div></div></div>`;
     });
     document.getElementById('leftContent').innerHTML=html;
   } else if(leftPanel==='weather'){
@@ -342,9 +381,9 @@ function renderLeft(){
       <button class="list-add-btn-hub" style="width:100%;border-radius:8px;padding:10px;font-size:14px" onclick="openKb('${activeList}')">+ Legg til ${activeList==='todo'?'gjøremål':'vare'}</button>
     </div>`;
     [...incomplete,...complete].forEach(([id,item])=>{
-      const col=MEMBERS[item.member]||'';
-      const badge=item.member?`<span class="list-member-badge" style="background:${col}">${item.member}</span>`:'';
-      html+=`<div class="list-item-hub"><div class="list-check-hub${item.done?' done':''}" onclick="toggleHubItem('${id}',${!item.done})">${item.done?'✓':''}</div><div class="list-item-text-hub${item.done?' done':''}">${item.text}</div>${badge}<button class="list-del-btn" onclick="deleteHubItem('${id}')">×</button></div>`;
+      const col=safeColor(MEMBERS[item.member]);
+      const badge=MEMBER_ORDER.includes(item.member)?`<span class="list-member-badge" style="background:${col}">${escapeHtml(item.member)}</span>`:'';
+      html+=`<div class="list-item-hub"><div class="list-check-hub${item.done?' done':''}" onclick="toggleHubItem(${jsArg(id)},${Boolean(!item.done)})">${item.done?'✓':''}</div><div class="list-item-text-hub${item.done?' done':''}">${escapeHtml(item.text)}</div>${badge}<button class="list-del-btn" onclick="deleteHubItem(${jsArg(id)})">×</button></div>`;
     });
     if(!incomplete.length&&!complete.length)html+=`<div class="list-empty-hub">${activeList==='todo'?'Ingen gjøremål 🎉':'Handlelisten er tom 🛒'}</div>`;
     if(complete.length>0)html+=`<button onclick="clearDoneHub()" style="margin-top:10px;width:100%;padding:8px;background:none;border:0.5px solid var(--border);border-radius:8px;color:var(--text2);font-size:12px;cursor:pointer">Fjern fullførte</button>`;
@@ -359,9 +398,9 @@ function renderDayEvents(){
   let html=`<div class="day-label">${dayName}</div>`;
   if(!evs.length)html+='<div class="empty">Ingen hendelser</div>';
   else evs.forEach(ev=>{
-    const col=MEMBERS[ev.members[0]]||'#888',time=ev.start?ev.start+(ev.end?' – '+ev.end:''):'Hele dagen';
-    const tags=ev.members.map(m=>`<span class="hub-tag" style="background:${MEMBERS[m]}">${m}</span>`).join('');
-    html+=`<div class="hub-event"><div class="hub-event-bar" style="background:${col}"></div><div><div class="hub-event-title">${ev.title}</div><div class="hub-event-time">${time}${ev.repeat!=='ingen'?' 🔁':''}</div><div class="hub-event-tags">${tags}</div></div></div>`;
+    const col=safeColor(MEMBERS[ev.members[0]]),time=ev.start?ev.start+(ev.end?' – '+ev.end:''):'Hele dagen';
+    const tags=ev.members.map(m=>`<span class="hub-tag" style="background:${safeColor(MEMBERS[m])}">${escapeHtml(m)}</span>`).join('');
+    html+=`<div class="hub-event"><div class="hub-event-bar" style="background:${col}"></div><div><div class="hub-event-title">${escapeHtml(ev.title)}</div><div class="hub-event-time">${escapeHtml(time)}${ev.repeat!=='ingen'?' 🔁':''}</div><div class="hub-event-tags">${tags}</div></div></div>`;
   });
   document.getElementById('dayEventsArea').innerHTML=html;
 }
@@ -374,8 +413,8 @@ function renderUpcoming(){
   let html='<div class="upcoming-header-label">Kommende</div>',lastDate='';
   filtered.slice(0,12).forEach(({dateStr,date,ev})=>{
     if(dateStr!==lastDate){const tmr=new Date();tmr.setDate(tmr.getDate()+1);const isTmr=dateStr===fmt(tmr.getFullYear(),tmr.getMonth(),tmr.getDate());const label=isTmr?'I morgen':DAYS_FULL[((date.getDay()+6)%7)]+' '+date.getDate()+'. '+MONTHS_NO[date.getMonth()];html+=`<div class="upcoming-date-label">${label}</div>`;lastDate=dateStr;}
-    const col=MEMBERS[ev.members[0]]||'#888';const avatars=ev.members.map(m=>`<div class="upcoming-avatar" style="background:${MEMBERS[m]}">${m[0]}</div>`).join('');
-    html+=`<div class="upcoming-item"><div class="upcoming-color" style="background:${col}"></div><div class="upcoming-info"><div class="upcoming-title">${ev.title}</div><div class="upcoming-time">${ev.start||'Hel dag'}${ev.repeat!=='ingen'?' 🔁':''}</div></div><div class="upcoming-members">${avatars}</div></div>`;
+    const col=safeColor(MEMBERS[ev.members[0]]);const avatars=ev.members.map(m=>`<div class="upcoming-avatar" style="background:${safeColor(MEMBERS[m])}">${escapeHtml(m.slice(0,1))}</div>`).join('');
+    html+=`<div class="upcoming-item"><div class="upcoming-color" style="background:${col}"></div><div class="upcoming-info"><div class="upcoming-title">${escapeHtml(ev.title)}</div><div class="upcoming-time">${escapeHtml(ev.start||'Hel dag')}${ev.repeat!=='ingen'?' 🔁':''}</div></div><div class="upcoming-members">${avatars}</div></div>`;
   });
   if(!filtered.length)html+='<div class="empty">Ingen kommende hendelser</div>';
   document.getElementById('upcomingList').innerHTML=html;
@@ -404,11 +443,11 @@ window.openKb=function(mode){
   document.getElementById('kbTitle').textContent=mode==='todo'?'Legg til gjøremål':'Legg til vare';
   document.getElementById('kbInput').value='';
   const row=document.getElementById('kbMemberRow');
-  row.innerHTML=`<span style="font-size:11px;color:var(--text2);margin-right:6px">Hvem:</span>`+Object.entries(MEMBERS).map(([name,color])=>`<button class="kb-member-btn" style="color:${color};border-color:${color}" data-name="${name}" onclick="selectKbMember(this,'${name}','${color}')">${name}</button>`).join('');
+  row.innerHTML=`<span style="font-size:11px;color:var(--text2);margin-right:6px">Hvem:</span>`+Object.entries(MEMBERS).map(([name,color])=>`<button class="kb-member-btn" style="color:${safeColor(color)};border-color:${safeColor(color)}" data-name="${escapeHtml(name)}" onclick="selectKbMember(this,${jsArg(name)})">${escapeHtml(name)}</button>`).join('');
   document.getElementById('kbOverlay').classList.add('open');
   setTimeout(()=>document.getElementById('kbInput').focus(),100);
 };
-window.selectKbMember=function(btn,name,color){
+window.selectKbMember=function(btn,name){
   kbMember=kbMember===name?'':name;
   document.querySelectorAll('.kb-member-btn').forEach(b=>{const n=b.dataset.name,c=MEMBERS[n];b.style.background=kbMember===n?c:'none';b.style.color=kbMember===n?'white':c;});
 };
@@ -425,95 +464,11 @@ function getWeekMonday(date){const d=new Date(date),day=d.getDay(),diff=day===0?
 
 function checkMidnight(){const now=new Date();if(now.getHours()===0&&now.getMinutes()===0){selectedDate=new Date();displayMonth=new Date(now.getFullYear(),now.getMonth(),1);renderAll();}}
 
-// ---- HUB VOICE ----
-let hubRecognition=null, hubVoiceParsed=null;
-
-window.openHubVoice=function(){
-  document.getElementById('hubVoiceOverlay').classList.add('open');
-  document.getElementById('hubVoiceState').textContent='🎤';
-  document.getElementById('hubVoiceStatus').textContent='Trykk for å snakke';
-  document.getElementById('hubVoiceTranscript').textContent='';
-  document.getElementById('hubVoiceResult').style.display='none';
-  document.getElementById('hubVoiceActions').style.display='none';
-  hubVoiceParsed=null;
-  startHubListening();
-};
-window.closeHubVoice=function(){document.getElementById('hubVoiceOverlay').classList.remove('open');document.getElementById('hubMicBtn').classList.remove('mic-active-hub');if(hubRecognition){try{hubRecognition.stop();}catch(e){}}};
-window.handleHubVoiceOverlay=function(e){if(e.target===document.getElementById('hubVoiceOverlay'))closeHubVoice();};
-
-function startHubListening(){
-  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-  if(!SR){document.getElementById('hubVoiceStatus').textContent='Talegjenkjenning støttes ikke';return;}
-  hubRecognition=new SR();
-  hubRecognition.lang='sv-SE';hubRecognition.continuous=false;hubRecognition.interimResults=true;
-  document.getElementById('hubMicBtn').classList.add('mic-active-hub');
-  document.getElementById('hubVoiceState').textContent='🔴';
-  document.getElementById('hubVoiceStatus').textContent='Lytter...';
-  hubRecognition.onresult=(event)=>{
-    const t=event.results[0][0].transcript;
-    document.getElementById('hubVoiceTranscript').textContent='«'+t+'»';
-    if(event.results[0].isFinal){document.getElementById('hubMicBtn').classList.remove('mic-active-hub');document.getElementById('hubVoiceState').textContent='🤔';document.getElementById('hubVoiceStatus').textContent='Forstår...';parseHubVoice(t);}
-  };
-  hubRecognition.onerror=()=>{document.getElementById('hubVoiceState').textContent='❌';document.getElementById('hubVoiceStatus').textContent='Kunne ikke høre deg';document.getElementById('hubMicBtn').classList.remove('mic-active-hub');};
-  hubRecognition.onend=()=>document.getElementById('hubMicBtn').classList.remove('mic-active-hub');
-  hubRecognition.start();
-}
-
-async function parseHubVoice(text){
-  const today=new Date(), todayISO=today.toISOString().split('T')[0];
-  const prompt=`Du er en smart kalenderassistent for familien Nyhlen Allum (${MEMBER_ORDER.join(', ')}).
-Brukeren sa: "${text}"
-Dagens dato: ${todayISO} (${['søndag','mandag','tirsdag','onsdag','torsdag','fredag','lørdag'][today.getDay()]})
-Returner KUN et JSON-objekt:
-{"type":"kalender"|"todo"|"handleliste","summary":"Kort beskrivelse på norsk","data":{"title/text":"...","date":"YYYY-MM-DD","endDate":"","start":"HH:MM eller tom","end":"","members":${JSON.stringify(MEMBER_ORDER)},"repeat":"ingen","notes":"","member":"navn eller tom"}}`;
-  try{
-    const res=await fetch('/.netlify/functions/claude',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:[{role:'user',content:prompt}]})});
-    const json=await res.json();
-    const raw=json.content[0].text.replace(/```json|```/g,'').trim();
-    hubVoiceParsed=JSON.parse(raw);
-    document.getElementById('hubVoiceState').textContent=hubVoiceParsed.type==='kalender'?'📅':hubVoiceParsed.type==='todo'?'✅':'🛒';
-    document.getElementById('hubVoiceStatus').textContent='Forstår jeg riktig?';
-    document.getElementById('hubVoiceResultText').textContent=hubVoiceParsed.summary;
-    document.getElementById('hubVoiceResult').style.display='block';
-    document.getElementById('hubVoiceActions').style.display='block';
-  }catch(e){document.getElementById('hubVoiceState').textContent='❌';document.getElementById('hubVoiceStatus').textContent='Noe gikk galt. Prøv igjen.';}
-}
-
-window.confirmHubVoice=async function(){
-  if(!hubVoiceParsed)return;
-  try{
-    if(hubVoiceParsed.type==='kalender'){const d=hubVoiceParsed.data;await push(eventsRef,{...d,updatedAt:Date.now()});}
-    else if(hubVoiceParsed.type==='todo'){await push(todoRef,{text:hubVoiceParsed.data.text||hubVoiceParsed.data.title,member:hubVoiceParsed.data.member||'',done:false,createdAt:Date.now()});}
-    else{await push(shopRef,{text:hubVoiceParsed.data.text||hubVoiceParsed.data.title,member:hubVoiceParsed.data.member||'',done:false,createdAt:Date.now()});}
-    closeHubVoice();
-  }catch(e){document.getElementById('hubVoiceStatus').textContent='Feil: '+e.message;}
-};
-window.retryHubVoice=function(){document.getElementById('hubVoiceResult').style.display='none';document.getElementById('hubVoiceActions').style.display='none';document.getElementById('hubVoiceTranscript').textContent='';hubVoiceParsed=null;startHubListening();};
 
 updateClock();
 setInterval(()=>{updateClock();checkMidnight();},1000);
 </script>
 
-<!-- Voice modal -->
-<div class="kb-overlay" id="hubVoiceOverlay" onclick="handleHubVoiceOverlay(event)">
-  <div class="kb-modal" style="text-align:center;padding:24px 20px 32px">
-    <div class="kb-handle"></div>
-    <div id="hubVoiceState" style="font-size:44px;margin-bottom:10px">🎤</div>
-    <div id="hubVoiceStatus" style="font-size:15px;font-weight:600;margin-bottom:6px">Si hva du vil gjøre</div>
-    <div id="hubVoiceTranscript" style="font-size:13px;color:var(--text2);min-height:20px;margin-bottom:14px;font-style:italic"></div>
-    <div id="hubVoiceResult" style="background:var(--bg);border-radius:10px;padding:12px;margin-bottom:14px;display:none;text-align:left">
-      <div style="font-size:11px;color:var(--text2);margin-bottom:4px;text-transform:uppercase;letter-spacing:1px">Forstår jeg riktig?</div>
-      <div id="hubVoiceResultText" style="font-size:14px;font-weight:500"></div>
-    </div>
-    <div id="hubVoiceActions" style="display:none">
-      <button class="kb-btn" onclick="confirmHubVoice()" style="margin-bottom:8px;width:100%">✅ Ja, legg til</button>
-      <button class="kb-btn" onclick="retryHubVoice()" style="background:var(--surface2);color:var(--text2);width:100%;margin-bottom:8px">🔄 Prøv igjen</button>
-    </div>
-    <button class="kb-btn" onclick="closeHubVoice()" style="background:var(--surface2);color:var(--text2);width:100%">Avbryt</button>
-    <div style="margin-top:14px;font-size:11px;color:var(--text2)">
-      «Legg melk på handlelisten» · «Husk å betale strøm» · «Tannlege fredag kl 14»
-    </div>
-  </div>
 </div>
 </body>
 </html>
